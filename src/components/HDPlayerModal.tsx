@@ -264,29 +264,6 @@ export const HDPlayerModal: React.FC<HDPlayerModalProps> = ({
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse flex-shrink-0" />
               <span className="truncate">Active Server: <strong className="text-white">{SERVERS.find(s => s.id === selectedServer)?.name}</strong></span>
             </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                onClick={() => {
-                  window.open(getEmbedUrl(), '_blank', 'noopener,noreferrer');
-                }}
-                className="text-xs bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-3 py-1 rounded-lg transition-all shadow-md shadow-emerald-600/20 flex items-center gap-1"
-                title="Open the video player in a new tab to bypass sandbox or ad issues"
-              >
-                <ExternalLink className="w-3 h-3" />
-                Open Player in New Tab
-              </button>
-              <button
-                onClick={() => {
-                  const currentIndex = SERVERS.findIndex(s => s.id === selectedServer);
-                  const nextIndex = (currentIndex + 1) % SERVERS.length;
-                  handleServerChange(SERVERS[nextIndex].id);
-                }}
-                className="text-xs bg-red-600 hover:bg-red-500 text-white font-bold px-3 py-1 rounded-lg transition-all shadow-md shadow-red-600/20"
-                title="If the current server is not working, click here to try the next one"
-              >
-                Video not working? Auto-Switch
-              </button>
-            </div>
           </div>
 
           <div className="relative w-full aspect-video bg-black rounded-3xl overflow-hidden border border-neutral-800/80 shadow-2xl shadow-black/90 flex-1">

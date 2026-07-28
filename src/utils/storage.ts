@@ -109,7 +109,7 @@ export function removeContinueWatching(id: number, mediaType: MediaType): void {
 
 // Preferred server
 export function getPreferredServer(): string {
-  return localStorage.getItem(PREFERRED_SERVER_KEY) || 'vidsrc_hd';
+  return localStorage.getItem(PREFERRED_SERVER_KEY) || 'twoembed';
 }
 
 export function setPreferredServer(serverId: string): void {
