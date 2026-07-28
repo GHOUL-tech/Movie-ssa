@@ -16,7 +16,9 @@ import {
   Maximize2,
   ExternalLink,
   Play,
-  Tv2
+  Tv2,
+  Shield,
+  ShieldOff
 } from 'lucide-react';
 import { MediaType, MediaDetail } from '../types';
 import { getMediaDetail, getSeasonDetail, getImageUrl } from '../services/tmdb';
@@ -49,6 +51,7 @@ export const HDPlayerModal: React.FC<HDPlayerModalProps> = ({
   const [showEpisodeDrawer, setShowEpisodeDrawer] = useState(false);
   const [episodesList, setEpisodesList] = useState<any[]>([]);
   const [loadingEpisodes, setLoadingEpisodes] = useState(false);
+  const [adBlockerEnabled, setAdBlockerEnabled] = useState(true);
 
   // Reset season and episode when mediaId changes
   useEffect(() => {
@@ -229,6 +232,20 @@ export const HDPlayerModal: React.FC<HDPlayerModalProps> = ({
             </button>
           )}
 
+          {/* Ad Blocker Toggle */}
+          <button
+            onClick={() => setAdBlockerEnabled(!adBlockerEnabled)}
+            className={`px-3 py-1.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 transition-all hidden sm:flex ${
+              adBlockerEnabled
+                ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-400'
+                : 'bg-neutral-900 border-neutral-800 text-neutral-400 hover:text-neutral-200'
+            }`}
+            title={adBlockerEnabled ? 'Ad Blocker Enabled (Blocks popups)' : 'Ad Blocker Disabled (Allows popups if player breaks)'}
+          >
+            {adBlockerEnabled ? <Shield className="w-3.5 h-3.5" /> : <ShieldOff className="w-3.5 h-3.5" />}
+            <span>Ad Block</span>
+          </button>
+
           {/* Cinema Mode Toggle */}
           <button
             onClick={() => setCinemaMode(!cinemaMode)}
@@ -287,6 +304,7 @@ export const HDPlayerModal: React.FC<HDPlayerModalProps> = ({
               scrolling="no"
               allowFullScreen
               allow="autoplay; encrypted-media; picture-in-picture; accelerometer; gyroscope; clipboard-write; screen-wake-lock"
+              {...(adBlockerEnabled ? { sandbox: "allow-same-origin allow-scripts allow-presentation" } : {})}
               referrerPolicy="no-referrer"
               className="w-full h-full border-0"
               onError={() => {
