@@ -14,15 +14,12 @@ import {
   TrendingUp,
   Star
 } from 'lucide-react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { MediaItem, MediaType } from '../types';
 import { searchMulti, getImageUrl } from '../services/tmdb';
 import { getWatchlist, getPreferredServer, setPreferredServer } from '../utils/storage';
 
 interface NavbarProps {
-  activeTab: string;
-  setActiveTab: (tab: string) => void;
-  onOpenMedia: (id: number, type: MediaType) => void;
-  onPlayMedia: (id: number, type: MediaType, season?: number, episode?: number) => void;
   onOpenFilter: () => void;
 }
 
@@ -35,13 +32,7 @@ export const SERVERS = [
   { id: 'smashy', name: 'Server 6: SmashyStream', badge: '1080p HD', description: 'Global multi-server player' },
 ];
 
-export const Navbar: React.FC<NavbarProps> = ({
-  activeTab,
-  setActiveTab,
-  onOpenMedia,
-  onPlayMedia,
-  onOpenFilter,
-}) => {
+export const Navbar: React.FC<NavbarProps> = ({ onOpenFilter }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<MediaItem[]>([]);
   const [isSearching, setIsSearching] = useState(false);
@@ -52,6 +43,10 @@ export const Navbar: React.FC<NavbarProps> = ({
   const [showServerMenu, setShowServerMenu] = useState(false);
 
   const searchRef = useRef<HTMLDivElement>(null);
+  
+  const navigate = useNavigate();
+  const location = useLocation();
+  const activeTab = location.pathname.substring(1) || 'home';
 
   // Update watchlist count periodically or on interaction
   useEffect(() => {
@@ -124,8 +119,8 @@ export const Navbar: React.FC<NavbarProps> = ({
           
           {/* Brand Logo */}
           <div className="flex items-center gap-8">
-            <button 
-              onClick={() => setActiveTab('home')}
+            <Link 
+              to="/"
               className="flex items-center gap-2.5 group text-left focus:outline-none"
             >
               <div className="relative flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-tr from-red-600 via-rose-500 to-amber-500 p-0.5 shadow-lg shadow-red-500/20 group-hover:shadow-red-500/40 transition-all duration-300">
@@ -141,22 +136,22 @@ export const Navbar: React.FC<NavbarProps> = ({
                   HD STREAMING
                 </span>
               </div>
-            </button>
+            </Link>
 
             {/* Navigation Links */}
             <nav className="hidden md:flex items-center gap-1">
               {[
-                { id: 'home', label: 'Home', icon: Film },
-                { id: 'movies', label: 'Movies', icon: Film },
-                { id: 'tv', label: 'TV Series', icon: Tv },
-                { id: 'trending', label: 'Trending', icon: TrendingUp },
+                { id: 'home', path: '/', label: 'Home', icon: Film },
+                { id: 'movies', path: '/movies', label: 'Movies', icon: Film },
+                { id: 'tv', path: '/tv', label: 'TV Series', icon: Tv },
+                { id: 'trending', path: '/trending', label: 'Trending', icon: TrendingUp },
               ].map((item) => {
                 const Icon = item.icon;
-                const isActive = activeTab === item.id;
+                const isActive = activeTab === item.id || (item.id === 'home' && activeTab === '');
                 return (
-                  <button
+                  <Link
                     key={item.id}
-                    onClick={() => setActiveTab(item.id)}
+                    to={item.path}
                     className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-sm font-medium transition-all duration-200 ${
                       isActive 
                         ? 'bg-red-500/10 text-red-400 border border-red-500/20 shadow-sm' 
@@ -165,7 +160,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                   >
                     <Icon className="w-4 h-4" />
                     <span>{item.label}</span>
-                  </button>
+                  </Link>
                 );
               })}
             </nav>
@@ -224,7 +219,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                             key={`${type}-${item.id}`}
                             className="flex items-center gap-3 p-2.5 hover:bg-neutral-800/80 transition-colors group cursor-pointer"
                             onClick={() => {
-                              onOpenMedia(item.id, type);
+                              navigate(`/detail/${type}/${item.id}`);
                               setShowDropdown(false);
                             }}
                           >
@@ -253,7 +248,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
-                                onPlayMedia(item.id, type);
+                                navigate(`/play/${type}/${item.id}`);
                                 setShowDropdown(false);
                               }}
                               className="p-2 rounded-full bg-red-600/20 text-red-400 hover:bg-red-600 hover:text-white transition-all flex-shrink-0"
@@ -327,8 +322,8 @@ export const Navbar: React.FC<NavbarProps> = ({
             </div>
 
             {/* Watchlist Nav Button */}
-            <button
-              onClick={() => setActiveTab('watchlist')}
+            <Link
+              to="/watchlist"
               className={`relative flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${
                 activeTab === 'watchlist'
                   ? 'bg-red-600 text-white shadow-lg shadow-red-600/30'
@@ -342,7 +337,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                   {watchlistCount}
                 </span>
               )}
-            </button>
+            </Link>
 
           </div>
         </div>
@@ -351,25 +346,25 @@ export const Navbar: React.FC<NavbarProps> = ({
       {/* Mobile Sub-Navigation Bar */}
       <div className="md:hidden flex items-center justify-around border-t border-neutral-800/60 mt-2 pt-2 px-4 bg-neutral-950/95">
         {[
-          { id: 'home', label: 'Home', icon: Film },
-          { id: 'movies', label: 'Movies', icon: Film },
-          { id: 'tv', label: 'TV Shows', icon: Tv },
-          { id: 'trending', label: 'Trending', icon: TrendingUp },
-          { id: 'watchlist', label: 'Watchlist', icon: Bookmark },
+          { id: 'home', path: '/', label: 'Home', icon: Film },
+          { id: 'movies', path: '/movies', label: 'Movies', icon: Film },
+          { id: 'tv', path: '/tv', label: 'TV Shows', icon: Tv },
+          { id: 'trending', path: '/trending', label: 'Trending', icon: TrendingUp },
+          { id: 'watchlist', path: '/watchlist', label: 'Watchlist', icon: Bookmark },
         ].map((item) => {
           const Icon = item.icon;
-          const isActive = activeTab === item.id;
+          const isActive = activeTab === item.id || (item.id === 'home' && activeTab === '');
           return (
-            <button
+            <Link
               key={item.id}
-              onClick={() => setActiveTab(item.id)}
+              to={item.path}
               className={`flex flex-col items-center gap-1 py-1 px-2 text-[11px] font-medium transition-colors ${
                 isActive ? 'text-red-500 font-bold' : 'text-neutral-400 hover:text-neutral-200'
               }`}
             >
               <Icon className="w-4 h-4" />
               <span>{item.label}</span>
-            </button>
+            </Link>
           );
         })}
       </div>

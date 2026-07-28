@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Routes, Route, useNavigate, useLocation } from 'react-router-dom';
 import { 
   Film, 
   Tv, 
@@ -31,8 +32,48 @@ import { HDPlayerModal } from './components/HDPlayerModal';
 import { ExploreFilter } from './components/ExploreFilter';
 import { Footer } from './components/Footer';
 
+// A wrapper to extract params and pass to the actual modal component
+import { useParams } from 'react-router-dom';
+
+function MediaDetailRoute() {
+  const { type, id } = useParams();
+  const navigate = useNavigate();
+  return (
+    <div className="absolute inset-0 bg-neutral-950 z-50 overflow-y-auto">
+      <MediaDetailModal
+        mediaId={Number(id)}
+        mediaType={(type as MediaType) || 'movie'}
+        onClose={() => navigate('/')}
+        onPlayMedia={(playId, playType, season, episode) => {
+          navigate(`/play/${playType}/${playId}${season ? `/${season}` : ''}${episode ? `/${episode}` : ''}`);
+        }}
+      />
+    </div>
+  );
+}
+
+function HDPlayerRoute() {
+  const { type, id, season, episode } = useParams();
+  const navigate = useNavigate();
+  return (
+    <div className="absolute inset-0 bg-neutral-950 z-50 overflow-hidden">
+      <HDPlayerModal
+        mediaId={Number(id)}
+        mediaType={(type as MediaType) || 'movie'}
+        initialSeason={season ? Number(season) : 1}
+        initialEpisode={episode ? Number(episode) : 1}
+        onClose={() => navigate('/')}
+        onPlayMedia={(playId, playType, s, e) => {
+          navigate(`/play/${playType}/${playId}${s ? `/${s}` : ''}${e ? `/${e}` : ''}`);
+        }}
+      />
+    </div>
+  );
+}
+
 export default function App() {
-  const [activeTab, setActiveTab] = useState<string>('home');
+  const navigate = useNavigate();
+  const location = useLocation();
 
   // Catalog Data States
   const [trending, setTrending] = useState<MediaItem[]>([]);
@@ -48,15 +89,6 @@ export default function App() {
   const [animationMedia, setAnimationMedia] = useState<MediaItem[]>([]);
 
   const [loading, setLoading] = useState(true);
-
-  // Modals
-  const [detailMediaId, setDetailMediaId] = useState<number | null>(null);
-  const [detailMediaType, setDetailMediaType] = useState<MediaType>('movie');
-
-  const [playerMediaId, setPlayerMediaId] = useState<number | null>(null);
-  const [playerMediaType, setPlayerMediaType] = useState<MediaType>('movie');
-  const [playerSeason, setPlayerSeason] = useState<number>(1);
-  const [playerEpisode, setPlayerEpisode] = useState<number>(1);
 
   const [isFilterOpen, setIsFilterOpen] = useState(false);
 
@@ -108,211 +140,200 @@ export default function App() {
     };
   }, []);
 
-  // Handlers for opening detail and player modals
+  // Handlers for navigating to detail and player views
   const handleOpenMedia = (id: number, type: MediaType) => {
-    setDetailMediaId(id);
-    setDetailMediaType(type);
+    navigate(`/detail/${type}/${id}`);
   };
 
   const handlePlayMedia = (id: number, type: MediaType, season = 1, episode = 1) => {
-    setPlayerMediaId(id);
-    setPlayerMediaType(type);
-    setPlayerSeason(season);
-    setPlayerEpisode(episode);
+    navigate(`/play/${type}/${id}/${season}/${episode}`);
   };
 
+  const isPlayerOrDetail = location.pathname.startsWith('/play') || location.pathname.startsWith('/detail');
+
   return (
-    <div className="min-h-screen bg-neutral-950 text-white font-sans selection:bg-red-600 selection:text-white flex flex-col">
+    <div className="min-h-screen bg-neutral-950 text-white font-sans selection:bg-red-600 selection:text-white flex flex-col relative">
       
       {/* Top Navbar */}
-      <Navbar
-        activeTab={activeTab}
-        setActiveTab={setActiveTab}
-        onOpenMedia={handleOpenMedia}
-        onPlayMedia={handlePlayMedia}
-        onOpenFilter={() => setIsFilterOpen(true)}
-      />
-
-      {/* Main Tab Content */}
-      {activeTab === 'watchlist' ? (
-        <Watchlist
-          onOpenMedia={handleOpenMedia}
-          onPlayMedia={handlePlayMedia}
-          onExploreMore={() => setActiveTab('home')}
+      {!isPlayerOrDetail && (
+        <Navbar
+          onOpenFilter={() => setIsFilterOpen(true)}
         />
-      ) : (
+      )}
+
+      {/* Main Content */}
+      {!isPlayerOrDetail && (
         <main className="flex-1">
-          
-          {/* Hero Banner Carousel on Home / Movies / TV */}
-          <HeroBanner
-            items={
-              activeTab === 'movies'
-                ? popularMovies
-                : activeTab === 'tv'
-                ? popularTV
-                : trending
-            }
-            onOpenMedia={handleOpenMedia}
-            onPlayMedia={handlePlayMedia}
-          />
+          <Routes>
+            <Route path="/watchlist" element={
+              <Watchlist
+                onOpenMedia={handleOpenMedia}
+                onPlayMedia={handlePlayMedia}
+                onExploreMore={() => navigate('/')}
+              />
+            } />
+            
+            <Route path="*" element={
+              <>
+                {/* Hero Banner Carousel */}
+                <Routes>
+                  <Route path="/movies" element={<HeroBanner items={popularMovies} onOpenMedia={handleOpenMedia} onPlayMedia={handlePlayMedia} />} />
+                  <Route path="/tv" element={<HeroBanner items={popularTV} onOpenMedia={handleOpenMedia} onPlayMedia={handlePlayMedia} />} />
+                  <Route path="*" element={<HeroBanner items={trending} onOpenMedia={handleOpenMedia} onPlayMedia={handlePlayMedia} />} />
+                </Routes>
 
-          {/* Continue Watching Section */}
-          <ContinueWatchingRow onPlayMedia={handlePlayMedia} />
+                {/* Continue Watching Section */}
+                <ContinueWatchingRow onPlayMedia={handlePlayMedia} />
 
-          {loading ? (
-            <div className="py-24 text-center space-y-4">
-              <div className="w-12 h-12 border-4 border-red-600 border-t-transparent rounded-full animate-spin mx-auto" />
-              <p className="text-sm font-bold text-neutral-400">Loading High Definition Catalog...</p>
-            </div>
-          ) : (
-            <>
-              {/* Home / Trending Views */}
-              {(activeTab === 'home' || activeTab === 'trending') && (
-                <>
-                  <MediaRow
-                    title="Trending This Week"
-                    subtitle="Most watched movies and series right now"
-                    icon={TrendingUp}
-                    items={trending}
-                    onOpenMedia={handleOpenMedia}
-                    onPlayMedia={handlePlayMedia}
-                  />
+                {loading ? (
+                  <div className="py-24 text-center space-y-4">
+                    <div className="w-12 h-12 border-4 border-red-600 border-t-transparent rounded-full animate-spin mx-auto" />
+                    <p className="text-sm font-bold text-neutral-400">Loading High Definition Catalog...</p>
+                  </div>
+                ) : (
+                  <Routes>
+                    {/* Home / Trending Views */}
+                    <Route path="/" element={
+                      <>
+                        <MediaRow
+                          title="Trending This Week"
+                          subtitle="Most watched movies and series right now"
+                          icon={TrendingUp}
+                          items={trending}
+                          onOpenMedia={handleOpenMedia}
+                          onPlayMedia={handlePlayMedia}
+                        />
+                        <MediaRow
+                          title="Top Rated Masterpieces"
+                          subtitle="Critically acclaimed cinema classics"
+                          icon={Star}
+                          items={topRated}
+                          onOpenMedia={handleOpenMedia}
+                          onPlayMedia={handlePlayMedia}
+                        />
+                        <MediaRow
+                          title="Popular Movies"
+                          subtitle="Blockbuster movies in 1080p Ultra HD"
+                          icon={Film}
+                          items={popularMovies}
+                          onOpenMedia={handleOpenMedia}
+                          onPlayMedia={handlePlayMedia}
+                        />
+                        <MediaRow
+                          title="Popular TV Series"
+                          subtitle="Binge-worthy shows with full season episodes"
+                          icon={Tv}
+                          items={popularTV}
+                          onOpenMedia={handleOpenMedia}
+                          onPlayMedia={handlePlayMedia}
+                        />
+                      </>
+                    } />
+                    
+                    <Route path="/trending" element={
+                      <>
+                        <MediaRow
+                          title="Trending This Week"
+                          subtitle="Most watched movies and series right now"
+                          icon={TrendingUp}
+                          items={trending}
+                          onOpenMedia={handleOpenMedia}
+                          onPlayMedia={handlePlayMedia}
+                        />
+                        <MediaRow
+                          title="Trending TV Shows"
+                          icon={TrendingUp}
+                          items={trending.filter((item) => item.media_type === 'tv' || item.first_air_date)}
+                          onOpenMedia={handleOpenMedia}
+                          onPlayMedia={handlePlayMedia}
+                        />
+                      </>
+                    } />
 
-                  <MediaRow
-                    title="Top Rated Masterpieces"
-                    subtitle="Critically acclaimed cinema classics"
-                    icon={Star}
-                    items={topRated}
-                    onOpenMedia={handleOpenMedia}
-                    onPlayMedia={handlePlayMedia}
-                  />
+                    {/* Movies Tab View */}
+                    <Route path="/movies" element={
+                      <>
+                        <MediaRow
+                          title="Popular Movies"
+                          icon={Film}
+                          items={popularMovies}
+                          onOpenMedia={handleOpenMedia}
+                          onPlayMedia={handlePlayMedia}
+                        />
+                        <MediaRow
+                          title="Now Playing in Theaters"
+                          icon={Popcorn}
+                          items={nowPlaying}
+                          onOpenMedia={handleOpenMedia}
+                          onPlayMedia={handlePlayMedia}
+                        />
+                        <MediaRow
+                          title="Action & Adventure"
+                          icon={Flame}
+                          items={actionMedia}
+                          onOpenMedia={handleOpenMedia}
+                          onPlayMedia={handlePlayMedia}
+                        />
+                        <MediaRow
+                          title="Sci-Fi & Fantasy"
+                          icon={Rocket}
+                          items={sciFiMedia}
+                          onOpenMedia={handleOpenMedia}
+                          onPlayMedia={handlePlayMedia}
+                        />
+                        <MediaRow
+                          title="Horror & Thrillers"
+                          icon={Ghost}
+                          items={horrorMedia}
+                          onOpenMedia={handleOpenMedia}
+                          onPlayMedia={handlePlayMedia}
+                        />
+                      </>
+                    } />
 
-                  <MediaRow
-                    title="Popular Movies"
-                    subtitle="Blockbuster movies in 1080p Ultra HD"
-                    icon={Film}
-                    items={popularMovies}
-                    onOpenMedia={handleOpenMedia}
-                    onPlayMedia={handlePlayMedia}
-                  />
-
-                  <MediaRow
-                    title="Popular TV Series"
-                    subtitle="Binge-worthy shows with full season episodes"
-                    icon={Tv}
-                    items={popularTV}
-                    onOpenMedia={handleOpenMedia}
-                    onPlayMedia={handlePlayMedia}
-                  />
-                </>
-              )}
-
-              {/* Movies Tab View */}
-              {activeTab === 'movies' && (
-                <>
-                  <MediaRow
-                    title="Popular Movies"
-                    icon={Film}
-                    items={popularMovies}
-                    onOpenMedia={handleOpenMedia}
-                    onPlayMedia={handlePlayMedia}
-                  />
-
-                  <MediaRow
-                    title="Now Playing in Theaters"
-                    icon={Popcorn}
-                    items={nowPlaying}
-                    onOpenMedia={handleOpenMedia}
-                    onPlayMedia={handlePlayMedia}
-                  />
-
-                  <MediaRow
-                    title="Action & Adventure"
-                    icon={Flame}
-                    items={actionMedia}
-                    onOpenMedia={handleOpenMedia}
-                    onPlayMedia={handlePlayMedia}
-                  />
-
-                  <MediaRow
-                    title="Sci-Fi & Fantasy"
-                    icon={Rocket}
-                    items={sciFiMedia}
-                    onOpenMedia={handleOpenMedia}
-                    onPlayMedia={handlePlayMedia}
-                  />
-
-                  <MediaRow
-                    title="Horror & Thrillers"
-                    icon={Ghost}
-                    items={horrorMedia}
-                    onOpenMedia={handleOpenMedia}
-                    onPlayMedia={handlePlayMedia}
-                  />
-                </>
-              )}
-
-              {/* TV Shows Tab View */}
-              {activeTab === 'tv' && (
-                <>
-                  <MediaRow
-                    title="Top TV Series"
-                    icon={Tv}
-                    items={popularTV}
-                    onOpenMedia={handleOpenMedia}
-                    onPlayMedia={handlePlayMedia}
-                  />
-
-                  <MediaRow
-                    title="Trending TV Shows"
-                    icon={TrendingUp}
-                    items={trending.filter((item) => item.media_type === 'tv' || item.first_air_date)}
-                    onOpenMedia={handleOpenMedia}
-                    onPlayMedia={handlePlayMedia}
-                  />
-
-                  <MediaRow
-                    title="Animation & Anime Series"
-                    icon={Sparkles}
-                    items={animationMedia}
-                    onOpenMedia={handleOpenMedia}
-                    onPlayMedia={handlePlayMedia}
-                  />
-                </>
-              )}
-            </>
-          )}
-
+                    {/* TV Shows Tab View */}
+                    <Route path="/tv" element={
+                      <>
+                        <MediaRow
+                          title="Top TV Series"
+                          icon={Tv}
+                          items={popularTV}
+                          onOpenMedia={handleOpenMedia}
+                          onPlayMedia={handlePlayMedia}
+                        />
+                        <MediaRow
+                          title="Trending TV Shows"
+                          icon={TrendingUp}
+                          items={trending.filter((item) => item.media_type === 'tv' || item.first_air_date)}
+                          onOpenMedia={handleOpenMedia}
+                          onPlayMedia={handlePlayMedia}
+                        />
+                        <MediaRow
+                          title="Animation & Anime Series"
+                          icon={Sparkles}
+                          items={animationMedia}
+                          onOpenMedia={handleOpenMedia}
+                          onPlayMedia={handlePlayMedia}
+                        />
+                      </>
+                    } />
+                  </Routes>
+                )}
+              </>
+            } />
+          </Routes>
         </main>
       )}
 
       {/* Footer */}
-      <Footer onNavigateTab={setActiveTab} />
+      {!isPlayerOrDetail && <Footer onNavigateTab={(tab) => navigate(tab === 'home' ? '/' : `/${tab}`)} />}
 
-      {/* Media Detail Modal */}
-      {detailMediaId && (
-        <MediaDetailModal
-          mediaId={detailMediaId}
-          mediaType={detailMediaType}
-          onClose={() => setDetailMediaId(null)}
-          onPlayMedia={(id, type, s, e) => {
-            setDetailMediaId(null);
-            handlePlayMedia(id, type, s, e);
-          }}
-        />
-      )}
-
-      {/* HD Video Streaming Player Modal */}
-      {playerMediaId && (
-        <HDPlayerModal
-          mediaId={playerMediaId}
-          mediaType={playerMediaType}
-          initialSeason={playerSeason}
-          initialEpisode={playerEpisode}
-          onClose={() => setPlayerMediaId(null)}
-          onPlayMedia={handlePlayMedia}
-        />
-      )}
+      {/* Media Detail Modal / Page */}
+      <Routes>
+        <Route path="/detail/:type/:id" element={<MediaDetailRoute />} />
+        <Route path="/play/:type/:id" element={<HDPlayerRoute />} />
+        <Route path="/play/:type/:id/:season/:episode" element={<HDPlayerRoute />} />
+      </Routes>
 
       {/* Filter Side Drawer */}
       <ExploreFilter
@@ -321,7 +342,6 @@ export default function App() {
         onOpenMedia={handleOpenMedia}
         onPlayMedia={handlePlayMedia}
       />
-
     </div>
   );
 }
