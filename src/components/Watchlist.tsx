@@ -73,7 +73,7 @@ export const Watchlist: React.FC<WatchlistProps> = ({
   });
 
   return (
-    <div className="pt-28 pb-16 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto min-h-screen">
+    <div className="pt-28 pb-16 px-4 sm:px-6 lg:px-12 2xl:px-24 max-w-[2560px] mx-auto min-h-screen">
       
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-8 border-b border-neutral-800 pb-6">
@@ -165,7 +165,7 @@ export const Watchlist: React.FC<WatchlistProps> = ({
           </button>
         </div>
       ) : (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 sm:gap-6">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 2xl:grid-cols-7 gap-4 sm:gap-6 2xl:gap-8">
           {filtered.map((item) => {
             const year = item.release_date ? new Date(item.release_date).getFullYear() : '';
 
@@ -185,19 +185,19 @@ export const Watchlist: React.FC<WatchlistProps> = ({
 
                   {/* Top Badges */}
                   <div className="absolute top-2 left-2 right-2 flex items-center justify-between z-10">
-                    <span className="px-1.5 py-0.5 rounded bg-neutral-950/90 text-[10px] font-bold text-neutral-300 uppercase">
+                    <span className="px-1.5 py-0.5 rounded bg-neutral-950/90 text-[10px] 2xl:text-xs font-bold text-neutral-300 uppercase">
                       {item.media_type === 'movie' ? 'Movie' : 'TV'}
                     </span>
                     <button
                       onClick={(e) => handleToggleWatched(e, item.id, item.media_type)}
-                      className={`p-1 rounded-lg border transition-all ${
+                      className={`p-1 2xl:p-2 rounded-lg border transition-all ${
                         item.watched
                           ? 'bg-emerald-600 border-emerald-500 text-white'
                           : 'bg-neutral-950/80 border-neutral-800 text-neutral-400 hover:text-white'
                       }`}
                       title={item.watched ? 'Mark as Unwatched' : 'Mark as Watched'}
                     >
-                      <CheckCircle className="w-3.5 h-3.5" />
+                      <CheckCircle className="w-3.5 h-3.5 2xl:w-4 2xl:h-4" />
                     </button>
                   </div>
 
@@ -218,15 +218,15 @@ export const Watchlist: React.FC<WatchlistProps> = ({
                           e.stopPropagation();
                           onPlayMedia(item.id, item.media_type);
                         }}
-                        className="p-3.5 rounded-full bg-red-600 text-white shadow-xl shadow-red-600/50 hover:scale-110 transition-transform"
+                        className="p-3.5 2xl:p-5 rounded-full bg-red-600 text-white shadow-xl shadow-red-600/50 hover:scale-110 transition-transform"
                         title="Watch in HD"
                       >
-                        <Play className="w-6 h-6 fill-current translate-x-0.5" />
+                        <Play className="w-6 h-6 2xl:w-8 2xl:h-8 fill-current translate-x-0.5" />
                       </button>
                     </div>
 
                     <div className="text-center">
-                      <span className="text-xs font-bold text-amber-400">★ {item.vote_average?.toFixed(1) || '8.0'}</span>
+                      <span className="text-xs 2xl:text-sm font-bold text-amber-400">★ {item.vote_average?.toFixed(1) || '8.0'}</span>
                     </div>
 
                   </div>
@@ -234,10 +234,10 @@ export const Watchlist: React.FC<WatchlistProps> = ({
 
                 {/* Card Title */}
                 <div className="mt-2.5">
-                  <h3 className="text-xs sm:text-sm font-bold text-white truncate group-hover:text-red-400 transition-colors">
+                  <h3 className="text-xs sm:text-sm 2xl:text-base font-bold text-white truncate group-hover:text-red-400 transition-colors">
                     {item.title}
                   </h3>
-                  <div className="flex items-center gap-2 text-[11px] text-neutral-400">
+                  <div className="flex items-center gap-2 text-[11px] 2xl:text-xs text-neutral-400">
                     <span className="capitalize">{item.media_type}</span>
                     {year && <span>• {year}</span>}
                   </div>

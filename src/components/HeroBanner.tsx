@@ -64,7 +64,7 @@ export const HeroBanner: React.FC<HeroBannerProps> = ({
   };
 
   return (
-    <div className="relative w-full h-[80vh] min-h-[550px] max-h-[850px] bg-neutral-950 overflow-hidden group">
+    <div className="relative w-full h-[80vh] min-h-[550px] max-h-[850px] 2xl:max-h-[1200px] bg-neutral-950 overflow-hidden group">
       
       {/* Background Backdrop Image */}
       <div className="absolute inset-0">
@@ -80,11 +80,11 @@ export const HeroBanner: React.FC<HeroBannerProps> = ({
       </div>
 
       {/* Content Overlay */}
-      <div className="relative max-w-7xl mx-auto h-full px-4 sm:px-6 lg:px-8 flex flex-col justify-end pb-16 sm:pb-24 pt-32">
-        <div className="max-w-2xl space-y-4">
+      <div className="relative max-w-full 2xl:max-w-[2560px] mx-auto h-full px-4 sm:px-6 lg:px-12 2xl:px-24 flex flex-col justify-end pb-16 sm:pb-24 2xl:pb-32 pt-32">
+        <div className="max-w-2xl 2xl:max-w-4xl space-y-4 2xl:space-y-6">
           
           {/* Header Badges */}
-          <div className="flex flex-wrap items-center gap-2 text-xs font-semibold">
+          <div className="flex flex-wrap items-center gap-2 text-xs 2xl:text-base font-semibold">
             <span className="px-2.5 py-1 rounded-md bg-red-600 text-white font-bold tracking-wider uppercase flex items-center gap-1 shadow-lg shadow-red-600/30">
               <Sparkles className="w-3 h-3 fill-current" />
               Zinovis Spotlight
@@ -105,55 +105,55 @@ export const HeroBanner: React.FC<HeroBannerProps> = ({
           </div>
 
           {/* Title */}
-          <h1 className="text-3xl sm:text-5xl md:text-6xl font-black text-white tracking-tight leading-none drop-shadow-md">
+          <h1 className="text-3xl sm:text-5xl md:text-6xl 2xl:text-8xl font-black text-white tracking-tight leading-none drop-shadow-md">
             {title}
           </h1>
 
           {/* Genres Chips */}
           <div className="flex flex-wrap gap-2 pt-1">
             {genres.map((g, idx) => (
-              <span key={idx} className="text-xs font-medium text-neutral-300 px-2.5 py-1 rounded-full bg-neutral-900/80 border border-neutral-800">
+              <span key={idx} className="text-xs 2xl:text-base font-medium text-neutral-300 px-2.5 py-1 2xl:px-4 2xl:py-2 rounded-full bg-neutral-900/80 border border-neutral-800">
                 {g}
               </span>
             ))}
           </div>
 
           {/* Overview */}
-          <p className="text-sm sm:text-base text-neutral-300 line-clamp-3 leading-relaxed max-w-xl font-normal drop-shadow">
+          <p className="text-sm sm:text-base 2xl:text-2xl text-neutral-300 line-clamp-3 leading-relaxed max-w-xl 2xl:max-w-3xl font-normal drop-shadow">
             {currentItem.overview || 'Stream this block-buster hit now in full High Definition on Zinovis with multi-server support.'}
           </p>
 
           {/* Action Buttons */}
-          <div className="flex flex-wrap items-center gap-3 pt-3">
+          <div className="flex flex-wrap items-center gap-3 2xl:gap-5 pt-3 2xl:pt-6">
             
             {/* Play Button */}
             <button
               onClick={() => onPlayMedia(currentItem.id, type)}
-              className="flex items-center gap-2.5 px-6 py-3.5 rounded-2xl bg-red-600 hover:bg-red-500 text-white font-bold text-sm sm:text-base shadow-xl shadow-red-600/40 hover:shadow-red-500/60 hover:scale-[1.02] active:scale-[0.98] transition-all"
+              className="flex items-center gap-2.5 px-6 py-3.5 2xl:px-8 2xl:py-5 rounded-2xl bg-red-600 hover:bg-red-500 text-white font-bold text-sm sm:text-base 2xl:text-xl shadow-xl shadow-red-600/40 hover:shadow-red-500/60 hover:scale-[1.02] active:scale-[0.98] transition-all"
             >
-              <Play className="w-5 h-5 fill-current" />
+              <Play className="w-5 h-5 2xl:w-7 2xl:h-7 fill-current" />
               <span>Watch in HD</span>
             </button>
 
             {/* Watchlist Toggle */}
             <button
               onClick={handleToggleWatchlist}
-              className={`flex items-center gap-2 px-5 py-3.5 rounded-2xl font-bold text-sm sm:text-base border transition-all ${
+              className={`flex items-center gap-2 px-5 py-3.5 2xl:px-8 2xl:py-5 rounded-2xl font-bold text-sm sm:text-base 2xl:text-xl border transition-all ${
                 inWatchlist
                   ? 'bg-emerald-600/20 border-emerald-500/50 text-emerald-400 hover:bg-emerald-600/30'
                   : 'bg-neutral-900/80 border-neutral-700/80 text-white hover:bg-neutral-800'
               }`}
             >
-              {inWatchlist ? <Check className="w-5 h-5 text-emerald-400" /> : <Plus className="w-5 h-5" />}
+              {inWatchlist ? <Check className="w-5 h-5 2xl:w-7 2xl:h-7 text-emerald-400" /> : <Plus className="w-5 h-5 2xl:w-7 2xl:h-7" />}
               <span>{inWatchlist ? 'In Watchlist' : 'Watchlist'}</span>
             </button>
 
             {/* More Details Button */}
             <button
               onClick={() => onOpenMedia(currentItem.id, type)}
-              className="flex items-center gap-2 px-5 py-3.5 rounded-2xl bg-neutral-900/80 hover:bg-neutral-800 border border-neutral-700/80 text-white font-bold text-sm sm:text-base transition-all"
+              className="flex items-center gap-2 px-5 py-3.5 2xl:px-8 2xl:py-5 rounded-2xl bg-neutral-900/80 hover:bg-neutral-800 border border-neutral-700/80 text-white font-bold text-sm sm:text-base 2xl:text-xl transition-all"
             >
-              <Info className="w-5 h-5 text-neutral-300" />
+              <Info className="w-5 h-5 2xl:w-7 2xl:h-7 text-neutral-300" />
               <span>Details</span>
             </button>
           </div>

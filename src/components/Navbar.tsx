@@ -114,7 +114,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenFilter }) => {
         ? 'bg-neutral-950/90 backdrop-blur-md border-b border-neutral-800/80 shadow-2xl shadow-black/80 py-3' 
         : 'bg-gradient-to-b from-neutral-950/90 via-neutral-950/50 to-transparent py-4'
     }`}>
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div className="max-w-[2560px] mx-auto px-4 sm:px-6 lg:px-12 2xl:px-24">
         <div className="flex items-center justify-between gap-4">
           
           {/* Brand Logo */}
@@ -172,14 +172,14 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenFilter }) => {
             {/* Search Bar with Autocomplete */}
             <div ref={searchRef} className="relative">
               <div className="relative flex items-center">
-                <Search className="w-4 h-4 text-neutral-400 absolute left-3 pointer-events-none" />
+                <Search className="w-4 h-4 2xl:w-6 2xl:h-6 text-neutral-400 absolute left-3 2xl:left-4 pointer-events-none" />
                 <input
                   type="text"
                   placeholder="Search movies, TV shows..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   onFocus={() => searchQuery.trim() && setShowDropdown(true)}
-                  className="w-36 sm:w-64 pl-9 pr-8 py-1.5 bg-neutral-900/90 hover:bg-neutral-900 focus:bg-neutral-950 text-white text-sm rounded-full border border-neutral-700/60 focus:border-red-500 focus:outline-none focus:ring-1 focus:ring-red-500 transition-all placeholder:text-neutral-500"
+                  className="w-36 sm:w-64 2xl:w-96 pl-9 2xl:pl-12 pr-8 py-1.5 2xl:py-2.5 bg-neutral-900/90 hover:bg-neutral-900 focus:bg-neutral-950 text-white text-sm 2xl:text-lg rounded-full border border-neutral-700/60 focus:border-red-500 focus:outline-none focus:ring-1 focus:ring-red-500 transition-all placeholder:text-neutral-500"
                 />
                 {searchQuery && (
                   <button

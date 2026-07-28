@@ -123,7 +123,7 @@ export const MediaDetailModal: React.FC<MediaDetailModalProps> = ({
     <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 md:p-6 overflow-y-auto bg-neutral-950/90 backdrop-blur-md animate-fadeIn">
       
       {/* Modal Container */}
-      <div className="relative w-full max-w-5xl bg-neutral-900 border border-neutral-800 rounded-3xl shadow-2xl overflow-hidden my-auto max-h-[92vh] flex flex-col">
+      <div className="relative w-full max-w-5xl 2xl:max-w-7xl bg-neutral-900 border border-neutral-800 rounded-3xl shadow-2xl overflow-hidden my-auto max-h-[92vh] flex flex-col">
         
         {/* Close Button */}
         <button
@@ -143,7 +143,7 @@ export const MediaDetailModal: React.FC<MediaDetailModalProps> = ({
           <div className="overflow-y-auto flex-1 scrollbar-thin scrollbar-thumb-neutral-800">
             
             {/* Header Backdrop & Poster Section */}
-            <div className="relative aspect-[21/9] min-h-[260px] sm:min-h-[380px] w-full bg-neutral-950 overflow-hidden">
+            <div className="relative aspect-[21/9] min-h-[260px] sm:min-h-[380px] lg:min-h-[500px] 2xl:min-h-[600px] w-full bg-neutral-950 overflow-hidden">
               <img
                 src={getImageUrl(detail.backdrop_path || detail.poster_path, 'backdrop')}
                 alt={title}
@@ -159,7 +159,7 @@ export const MediaDetailModal: React.FC<MediaDetailModalProps> = ({
                 <img
                   src={getImageUrl(detail.poster_path, 'poster')}
                   alt={title}
-                  className="w-28 sm:w-40 aspect-[2/3] object-cover rounded-2xl border-2 border-neutral-700 shadow-2xl hidden sm:block flex-shrink-0"
+                  className="w-28 sm:w-40 lg:w-48 2xl:w-56 aspect-[2/3] object-cover rounded-2xl border-2 border-neutral-700 shadow-2xl hidden sm:block flex-shrink-0"
                 />
 
                 <div className="space-y-2 flex-1">
@@ -183,13 +183,13 @@ export const MediaDetailModal: React.FC<MediaDetailModalProps> = ({
                   </div>
 
                   {/* Title */}
-                  <h2 className="text-2xl sm:text-4xl font-black text-white tracking-tight">
+                  <h2 className="text-2xl sm:text-4xl lg:text-5xl 2xl:text-6xl font-black text-white tracking-tight">
                     {title}
                   </h2>
 
                   {/* Tagline */}
                   {detail.tagline && (
-                    <p className="text-xs sm:text-sm italic text-red-400/90 font-medium">
+                    <p className="text-xs sm:text-sm lg:text-base italic text-red-400/90 font-medium">
                       "{detail.tagline}"
                     </p>
                   )}
@@ -200,32 +200,32 @@ export const MediaDetailModal: React.FC<MediaDetailModalProps> = ({
                       onClick={() => {
                         onPlayMedia(detail.id, mediaType, selectedSeasonNum, 1);
                       }}
-                      className="flex items-center gap-2 px-6 py-3 rounded-xl bg-red-600 hover:bg-red-500 text-white font-bold text-sm shadow-xl shadow-red-600/40 hover:scale-[1.02] transition-all"
+                      className="flex items-center gap-2 px-6 py-3 md:px-8 md:py-4 rounded-xl bg-red-600 hover:bg-red-500 text-white font-bold text-sm md:text-base shadow-xl shadow-red-600/40 hover:scale-[1.02] transition-all"
                     >
-                      <Play className="w-4 h-4 fill-current" />
+                      <Play className="w-4 h-4 md:w-5 md:h-5 fill-current" />
                       <span>{mediaType === 'tv' ? 'Watch Season 1 Episode 1' : 'Play Movie in HD'}</span>
                     </button>
 
                     <button
                       onClick={handleToggleWatchlist}
-                      className={`flex items-center gap-2 px-4 py-3 rounded-xl font-bold text-sm border transition-all ${
+                      className={`flex items-center gap-2 px-4 py-3 md:px-6 md:py-4 rounded-xl font-bold text-sm md:text-base border transition-all ${
                         inWatchlist
                           ? 'bg-emerald-600/20 border-emerald-500/50 text-emerald-400'
                           : 'bg-neutral-800/90 border-neutral-700 text-white hover:bg-neutral-700'
                       }`}
                     >
-                      {inWatchlist ? <Check className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
+                      {inWatchlist ? <Check className="w-4 h-4 md:w-5 md:h-5" /> : <Plus className="w-4 h-4 md:w-5 md:h-5" />}
                       <span>{inWatchlist ? 'In Watchlist' : 'Watchlist'}</span>
                     </button>
 
                     <button
                       onClick={handleShare}
-                      className="p-3 rounded-xl bg-neutral-800/90 border border-neutral-700 text-neutral-300 hover:text-white transition-all"
+                      className="p-3 md:p-4 rounded-xl bg-neutral-800/90 border border-neutral-700 text-neutral-300 hover:text-white transition-all"
                       title="Share Title"
                     >
-                      <Share2 className="w-4 h-4" />
+                      <Share2 className="w-4 h-4 md:w-5 md:h-5" />
                     </button>
-                    {copiedLink && <span className="text-xs text-emerald-400 font-semibold">Link Copied!</span>}
+                    {copiedLink && <span className="text-xs md:text-sm text-emerald-400 font-semibold">Link Copied!</span>}
                   </div>
 
                 </div>

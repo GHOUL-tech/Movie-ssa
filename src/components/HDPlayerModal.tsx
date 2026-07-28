@@ -157,21 +157,21 @@ export const HDPlayerModal: React.FC<HDPlayerModalProps> = ({
     }`}>
       
       {/* Top Header Controls Bar */}
-      <div className="w-full bg-neutral-950/90 border-b border-neutral-800/80 px-4 py-3 flex items-center justify-between z-20 flex-wrap gap-3">
+      <div className="w-full bg-neutral-950/90 border-b border-neutral-800/80 px-4 md:px-8 py-3 md:py-4 flex items-center justify-between z-20 flex-wrap gap-3">
         
         {/* Title & Specs */}
-        <div className="flex items-center gap-3 cursor-pointer group" onClick={onClose} title="Go back to Home">
-          <div className="w-8 h-8 rounded-lg bg-red-600 flex items-center justify-center text-white shadow-lg shadow-red-600/30 font-black text-xs group-hover:scale-105 transition-transform">
-            <Film className="w-4 h-4" />
+        <div className="flex items-center gap-3 md:gap-4 cursor-pointer group" onClick={onClose} title="Go back to Home">
+          <div className="w-8 h-8 md:w-12 md:h-12 rounded-lg md:rounded-xl bg-red-600 flex items-center justify-center text-white shadow-lg shadow-red-600/30 font-black text-xs md:text-sm group-hover:scale-105 transition-transform">
+            <Film className="w-4 h-4 md:w-6 md:h-6" />
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h2 className="text-sm sm:text-base font-black text-white tracking-wider group-hover:text-red-400 transition-colors">
+              <h2 className="text-sm sm:text-base md:text-xl lg:text-2xl font-black text-white tracking-wider group-hover:text-red-400 transition-colors">
                 ZINO<span className="text-red-500">VIS</span>
               </h2>
             </div>
-            <div className="flex items-center gap-2 text-[11px] text-neutral-400">
-              <span className="font-bold truncate max-w-[200px]">
+            <div className="flex items-center gap-2 text-[11px] md:text-sm text-neutral-400">
+              <span className="font-bold truncate max-w-[200px] md:max-w-[400px]">
                 {title}
               </span>
               {mediaType === 'tv' && (
@@ -187,12 +187,12 @@ export const HDPlayerModal: React.FC<HDPlayerModalProps> = ({
         <div className="flex items-center gap-2 flex-wrap">
           
           {/* Server Selector Dropdown */}
-          <div className="flex items-center gap-1.5 bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-1.5">
-            <Monitor className="w-3.5 h-3.5 text-red-500" />
+          <div className="flex items-center gap-1.5 bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-1.5 md:px-4 md:py-2">
+            <Monitor className="w-3.5 h-3.5 md:w-5 md:h-5 text-red-500" />
             <select
               value={selectedServer}
               onChange={(e) => handleServerChange(e.target.value)}
-              className="bg-transparent text-white font-bold text-xs focus:outline-none cursor-pointer"
+              className="bg-transparent text-white font-bold text-xs md:text-sm focus:outline-none cursor-pointer"
             >
               {SERVERS.map((srv) => (
                 <option key={srv.id} value={srv.id} className="bg-neutral-900 text-white">
@@ -245,28 +245,28 @@ export const HDPlayerModal: React.FC<HDPlayerModalProps> = ({
           {/* Close Player */}
           <button
             onClick={onClose}
-            className="p-2 rounded-xl bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-white hover:bg-red-600 hover:border-red-500 transition-all ml-1"
+            className="p-2 md:p-3 rounded-xl bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-white hover:bg-red-600 hover:border-red-500 transition-all ml-1 md:ml-4"
             title="Exit Player"
           >
-            <X className="w-5 h-5" />
+            <X className="w-5 h-5 md:w-6 md:h-6" />
           </button>
         </div>
 
       </div>
 
       {/* Main Content Area */}
-      <div className="flex-1 relative flex flex-col lg:flex-row items-center justify-center p-2 sm:p-4 max-w-7xl mx-auto w-full gap-4">
+      <div className="flex-1 relative flex flex-col lg:flex-row items-center justify-center p-2 sm:p-4 md:p-6 lg:p-8 max-w-full 2xl:max-w-[2560px] mx-auto w-full gap-4 md:gap-6">
         
         {/* Render Web HTML5 Player Frame */}
-        <div className="flex-1 flex flex-col w-full h-full space-y-2">
-          <div className="flex items-center justify-between px-3 py-2 bg-neutral-900/90 rounded-2xl border border-neutral-800 text-xs text-neutral-300 flex-wrap gap-2">
+        <div className="flex-1 flex flex-col w-full h-full space-y-2 md:space-y-4">
+          <div className="flex items-center justify-between px-3 py-2 md:px-4 md:py-3 bg-neutral-900/90 rounded-2xl border border-neutral-800 text-xs md:text-sm text-neutral-300 flex-wrap gap-2">
             <div className="flex items-center gap-2 min-w-0">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse flex-shrink-0" />
               <span className="truncate">Active Server: <strong className="text-white">{SERVERS.find(s => s.id === selectedServer)?.name}</strong></span>
             </div>
           </div>
 
-          <div className="relative w-full aspect-video bg-black rounded-3xl overflow-hidden border border-neutral-800/80 shadow-2xl shadow-black/90 flex-1">
+          <div className="relative w-full aspect-video bg-black rounded-3xl overflow-hidden border border-neutral-800/80 shadow-2xl shadow-black/90 flex-1 min-h-[300px] md:min-h-[500px] lg:min-h-[600px] 2xl:min-h-[800px]">
             <iframe
               src={getEmbedUrl()}
               title={title}
@@ -290,9 +290,9 @@ export const HDPlayerModal: React.FC<HDPlayerModalProps> = ({
 
         {/* Side Episode Picker Drawer for TV Shows */}
         {mediaType === 'tv' && showEpisodeDrawer && (
-          <div className="w-full lg:w-80 h-full max-h-[500px] bg-neutral-900 border border-neutral-800 rounded-3xl p-4 flex flex-col space-y-3 z-30">
+          <div className="w-full lg:w-80 2xl:w-96 h-full lg:max-h-[800px] bg-neutral-900 border border-neutral-800 rounded-3xl p-4 flex flex-col space-y-3 z-30">
             <div className="flex items-center justify-between pb-2 border-b border-neutral-800">
-              <h3 className="text-sm font-black text-white">Season {season} Episodes</h3>
+              <h3 className="text-sm md:text-base font-black text-white">Season {season} Episodes</h3>
               
               {/* Season switcher */}
               <select
@@ -301,7 +301,7 @@ export const HDPlayerModal: React.FC<HDPlayerModalProps> = ({
                   setSeason(Number(e.target.value));
                   setEpisode(1);
                 }}
-                className="bg-neutral-800 border border-neutral-700 text-xs font-bold text-white px-2 py-1 rounded-lg"
+                className="bg-neutral-800 border border-neutral-700 text-xs md:text-sm font-bold text-white px-2 py-1 md:px-3 md:py-2 rounded-lg"
               >
                 {detail?.seasons?.filter(s => s.season_number > 0).map((s) => (
                   <option key={s.id} value={s.season_number}>
@@ -344,34 +344,36 @@ export const HDPlayerModal: React.FC<HDPlayerModalProps> = ({
 
       {/* TV Series Next/Prev Controls Footer */}
       {mediaType === 'tv' && (
-        <div className="bg-neutral-950/90 border-t border-neutral-800/80 px-6 py-3 flex items-center justify-between max-w-7xl mx-auto w-full">
+        <div className="bg-neutral-950/90 border-t border-neutral-800/80 px-4 md:px-8 py-3 md:py-4 flex items-center justify-between max-w-full 2xl:max-w-[2560px] mx-auto w-full">
           <button
             disabled={episode <= 1}
             onClick={() => setEpisode(prev => Math.max(1, prev - 1))}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-neutral-900 border border-neutral-800 text-white font-bold text-xs disabled:opacity-40 disabled:cursor-not-allowed hover:bg-neutral-800 transition-all"
+            className="flex items-center gap-2 px-4 py-2 md:px-6 md:py-3 rounded-xl bg-neutral-900 border border-neutral-800 text-white font-bold text-xs md:text-sm disabled:opacity-40 disabled:cursor-not-allowed hover:bg-neutral-800 transition-all"
           >
-            <ChevronLeft className="w-4 h-4" />
-            <span>Previous Episode</span>
+            <ChevronLeft className="w-4 h-4 md:w-5 md:h-5" />
+            <span className="hidden sm:inline">Previous Episode</span>
+            <span className="sm:hidden">Prev</span>
           </button>
 
-          <span className="text-xs font-bold text-neutral-400">
+          <span className="text-xs md:text-base font-bold text-neutral-400">
             Playing Season {season} • Episode {episode}
           </span>
 
           <button
             onClick={() => setEpisode(prev => prev + 1)}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-red-600 hover:bg-red-500 text-white font-bold text-xs shadow-lg shadow-red-600/30 transition-all"
+            className="flex items-center gap-2 px-4 py-2 md:px-6 md:py-3 rounded-xl bg-red-600 hover:bg-red-500 text-white font-bold text-xs md:text-sm shadow-lg shadow-red-600/30 transition-all"
           >
-            <span>Next Episode</span>
-            <ChevronRight className="w-4 h-4" />
+            <span className="hidden sm:inline">Next Episode</span>
+            <span className="sm:hidden">Next</span>
+            <ChevronRight className="w-4 h-4 md:w-5 md:h-5" />
           </button>
         </div>
       )}
 
       {/* Recommendations Section */}
       {detail && (detail.recommendations?.results?.length || detail.similar?.results?.length) ? (
-        <div className="max-w-7xl mx-auto w-full p-4 space-y-4 pb-12 mt-4">
-          <h3 className="text-lg font-bold text-white flex items-center gap-2">
+        <div className="max-w-full 2xl:max-w-[2560px] mx-auto w-full p-4 md:p-8 space-y-4 md:space-6 pb-12 mt-4 md:mt-8">
+          <h3 className="text-lg md:text-2xl font-bold text-white flex items-center gap-2">
             <Sparkles className="w-5 h-5 text-red-500" />
             More Movies & Series You May Like
           </h3>

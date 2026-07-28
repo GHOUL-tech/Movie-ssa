@@ -43,7 +43,7 @@ export const MediaCard: React.FC<MediaCardProps> = ({
   return (
     <div 
       onClick={() => onOpenMedia(item.id, type)}
-      className="group relative flex-shrink-0 w-36 sm:w-48 cursor-pointer select-none"
+      className="group relative flex-shrink-0 w-36 sm:w-48 lg:w-56 2xl:w-64 cursor-pointer select-none"
     >
       {/* Poster Image Container */}
       <div className="relative aspect-[2/3] w-full rounded-2xl overflow-hidden bg-neutral-900 border border-neutral-800/80 shadow-lg group-hover:shadow-red-600/20 group-hover:border-neutral-700 transition-all duration-300 group-hover:-translate-y-1">
@@ -57,10 +57,10 @@ export const MediaCard: React.FC<MediaCardProps> = ({
 
         {/* Top Badges */}
         <div className="absolute top-2 left-2 right-2 flex items-center justify-between pointer-events-none z-10">
-          <span className="px-1.5 py-0.5 rounded bg-neutral-950/80 backdrop-blur border border-neutral-800 text-[10px] font-bold text-neutral-300 uppercase">
+          <span className="px-1.5 py-0.5 rounded bg-neutral-950/80 backdrop-blur border border-neutral-800 text-[10px] 2xl:text-xs font-bold text-neutral-300 uppercase">
             {type === 'movie' ? 'Movie' : 'TV'}
           </span>
-          <span className="px-1.5 py-0.5 rounded bg-red-600/90 text-white font-black text-[9px] shadow-sm">
+          <span className="px-1.5 py-0.5 rounded bg-red-600/90 text-white font-black text-[9px] 2xl:text-[11px] shadow-sm">
             HD 1080p
           </span>
         </div>
@@ -101,10 +101,10 @@ export const MediaCard: React.FC<MediaCardProps> = ({
                 e.stopPropagation();
                 onPlayMedia(item.id, type);
               }}
-              className="p-3.5 rounded-full bg-red-600 text-white shadow-xl shadow-red-600/50 hover:bg-red-500 hover:scale-110 active:scale-95 transition-all"
+              className="p-3.5 2xl:p-5 rounded-full bg-red-600 text-white shadow-xl shadow-red-600/50 hover:bg-red-500 hover:scale-110 active:scale-95 transition-all"
               title="Watch Now in HD"
             >
-              <Play className="w-6 h-6 fill-current translate-x-0.5" />
+              <Play className="w-6 h-6 2xl:w-8 2xl:h-8 fill-current translate-x-0.5" />
             </button>
           </div>
 
@@ -128,10 +128,10 @@ export const MediaCard: React.FC<MediaCardProps> = ({
 
       {/* Card Footer Info */}
       <div className="mt-2.5 space-y-0.5">
-        <h3 className="text-xs sm:text-sm font-bold text-white truncate group-hover:text-red-400 transition-colors">
+        <h3 className="text-xs sm:text-sm 2xl:text-base font-bold text-white truncate group-hover:text-red-400 transition-colors">
           {title}
         </h3>
-        <div className="flex items-center gap-2 text-[11px] text-neutral-400">
+        <div className="flex items-center gap-2 text-[11px] 2xl:text-xs text-neutral-400">
           <span className="capitalize">{type === 'movie' ? 'Movie' : 'TV Show'}</span>
           {year && <span>• {year}</span>}
         </div>

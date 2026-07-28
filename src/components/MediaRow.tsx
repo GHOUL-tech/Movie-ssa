@@ -36,19 +36,19 @@ export const MediaRow: React.FC<MediaRowProps> = ({
   if (!items || items.length === 0) return null;
 
   return (
-    <section className="relative my-8 sm:my-12 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto group/row">
+    <section className="relative my-8 sm:my-12 px-4 sm:px-6 lg:px-12 2xl:px-24 max-w-[2560px] mx-auto group/row">
       
       {/* Section Header */}
       <div className="flex items-end justify-between mb-4">
         <div>
           <div className="flex items-center gap-2">
-            {Icon && <Icon className="w-5 h-5 text-red-500" />}
-            <h2 className="text-xl sm:text-2xl font-black text-white tracking-tight">
+            {Icon && <Icon className="w-5 h-5 2xl:w-8 2xl:h-8 text-red-500" />}
+            <h2 className="text-xl sm:text-2xl 2xl:text-4xl font-black text-white tracking-tight">
               {title}
             </h2>
           </div>
           {subtitle && (
-            <p className="text-xs text-neutral-400 mt-1">{subtitle}</p>
+            <p className="text-xs 2xl:text-base text-neutral-400 mt-1">{subtitle}</p>
           )}
         </div>
 
@@ -56,17 +56,17 @@ export const MediaRow: React.FC<MediaRowProps> = ({
         <div className="flex items-center gap-2">
           <button
             onClick={() => scroll('left')}
-            className="p-2 rounded-xl bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-white hover:bg-red-600 hover:border-red-500 transition-all"
+            className="p-2 2xl:p-4 rounded-xl bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-white hover:bg-red-600 hover:border-red-500 transition-all"
             title="Scroll Left"
           >
-            <ChevronLeft className="w-4 h-4" />
+            <ChevronLeft className="w-4 h-4 2xl:w-6 2xl:h-6" />
           </button>
           <button
             onClick={() => scroll('right')}
-            className="p-2 rounded-xl bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-white hover:bg-red-600 hover:border-red-500 transition-all"
+            className="p-2 2xl:p-4 rounded-xl bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-white hover:bg-red-600 hover:border-red-500 transition-all"
             title="Scroll Right"
           >
-            <ChevronRight className="w-4 h-4" />
+            <ChevronRight className="w-4 h-4 2xl:w-6 2xl:h-6" />
           </button>
         </div>
       </div>
