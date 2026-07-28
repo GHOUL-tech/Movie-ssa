@@ -130,7 +130,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenFilter }) => {
               </div>
               <div className="flex flex-col">
                 <span className="text-xl sm:text-2xl font-black tracking-wider text-white font-sans flex items-center">
-                  CINE<span className="text-transparent bg-clip-text bg-gradient-to-r from-red-500 to-rose-400">SCOPE</span>
+                  ZINO<span className="text-transparent bg-clip-text bg-gradient-to-r from-red-500 to-rose-400">VIS</span>
                 </span>
                 <span className="text-[10px] font-semibold tracking-widest text-red-400/90 uppercase -mt-1 hidden sm:block">
                   HD STREAMING

@@ -13,7 +13,7 @@ async function startServer() {
 
   // Health check
   app.get('/api/health', (req, res) => {
-    res.json({ status: 'ok', app: 'Cinescope Streaming Service' });
+    res.json({ status: 'ok', app: 'Zinovis Streaming Service' });
   });
 
   // TMDB Proxy Endpoint
@@ -59,7 +59,7 @@ async function startServer() {
   }
 
   app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Cinescope server running on http://0.0.0.0:${PORT}`);
+    console.log(`Zinovis server running on http://0.0.0.0:${PORT}`);
   });
 }
 

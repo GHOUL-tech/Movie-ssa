@@ -1,5 +1,5 @@
 {
-  "name": "CINESCOPE",
+  "name": "Zinovis",
   "description": "High-definition movie and TV show streaming service with real-time catalog, multi-server HD playback, and custom watchlists.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]

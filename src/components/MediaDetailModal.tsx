@@ -137,7 +137,7 @@ export const MediaDetailModal: React.FC<MediaDetailModalProps> = ({
         {loading || !detail ? (
           <div className="p-16 text-center space-y-4 my-auto">
             <div className="w-12 h-12 border-4 border-red-600 border-t-transparent rounded-full animate-spin mx-auto" />
-            <p className="text-sm font-semibold text-neutral-400">Loading Cinescope Media Details...</p>
+            <p className="text-sm font-semibold text-neutral-400">Loading Zinovis Media Details...</p>
           </div>
         ) : (
           <div className="overflow-y-auto flex-1 scrollbar-thin scrollbar-thumb-neutral-800">

@@ -130,7 +130,7 @@ export default function App() {
         setHorrorMedia(horrorRes.results);
         setAnimationMedia(animationRes.results);
       })
-      .catch((err) => console.error('Failed to load Cinescope catalog:', err))
+      .catch((err) => console.error('Failed to load Zinovis catalog:', err))
       .finally(() => {
         if (isMounted) setLoading(false);
       });

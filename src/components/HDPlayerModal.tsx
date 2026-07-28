@@ -149,7 +149,7 @@ export const HDPlayerModal: React.FC<HDPlayerModalProps> = ({
   };
 
   const currentEmbedUrl = getEmbedUrl(selectedServer);
-  const title = detail?.title || detail?.name || 'Cinescope Player';
+  const title = detail?.title || detail?.name || 'Zinovis Player';
 
   return (
     <div className={`fixed inset-0 z-50 flex flex-col transition-all duration-500 overflow-y-auto ${
@@ -167,7 +167,7 @@ export const HDPlayerModal: React.FC<HDPlayerModalProps> = ({
           <div>
             <div className="flex items-center gap-2">
               <h2 className="text-sm sm:text-base font-black text-white tracking-wider group-hover:text-red-400 transition-colors">
-                CINE<span className="text-red-500">SCOPE</span>
+                ZINO<span className="text-red-500">VIS</span>
               </h2>
             </div>
             <div className="flex items-center gap-2 text-[11px] text-neutral-400">

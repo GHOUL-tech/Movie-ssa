@@ -63,11 +63,11 @@ export const Footer: React.FC<FooterProps> = ({ onNavigateTab }) => {
                 <Film className="w-4 h-4" />
               </div>
               <span className="text-xl font-black text-white tracking-wider">
-                CINE<span className="text-red-500">SCOPE</span>
+                ZINO<span className="text-red-500">VIS</span>
               </span>
             </div>
             <p className="text-xs text-neutral-400 leading-relaxed">
-              Cinescope is an advanced streaming catalog platform featuring real-time movie and TV series discovery, high-definition streaming embeds, and custom user watchlists.
+              Zinovis is an advanced streaming catalog platform featuring real-time movie and TV series discovery, high-definition streaming embeds, and custom user watchlists.
             </p>
           </div>
 
@@ -98,7 +98,7 @@ export const Footer: React.FC<FooterProps> = ({ onNavigateTab }) => {
 
         {/* Bottom Disclaimer */}
         <div className="pt-6 border-t border-neutral-800/60 flex flex-col sm:flex-row items-center justify-between text-xs text-neutral-400 gap-4">
-          <p>© {new Date().getFullYear()} Cinescope Streaming Service. Powered by TMDB API.</p>
+          <p>© {new Date().getFullYear()} Zinovis Streaming Service. Powered by TMDB API.</p>
           <div className="flex items-center gap-1 text-[11px]">
             <span>Crafted with</span>
             <Heart className="w-3 h-3 text-red-500 fill-current" />

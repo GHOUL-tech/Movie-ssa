@@ -87,7 +87,7 @@ export const HeroBanner: React.FC<HeroBannerProps> = ({
           <div className="flex flex-wrap items-center gap-2 text-xs font-semibold">
             <span className="px-2.5 py-1 rounded-md bg-red-600 text-white font-bold tracking-wider uppercase flex items-center gap-1 shadow-lg shadow-red-600/30">
               <Sparkles className="w-3 h-3 fill-current" />
-              Cinescope Spotlight
+              Zinovis Spotlight
             </span>
             <span className="px-2 py-0.5 rounded bg-neutral-900/90 border border-neutral-700 text-neutral-200 font-bold">
               {type === 'movie' ? 'MOVIE' : 'TV SERIES'}
@@ -120,7 +120,7 @@ export const HeroBanner: React.FC<HeroBannerProps> = ({
 
           {/* Overview */}
           <p className="text-sm sm:text-base text-neutral-300 line-clamp-3 leading-relaxed max-w-xl font-normal drop-shadow">
-            {currentItem.overview || 'Stream this block-buster hit now in full High Definition on Cinescope with multi-server support.'}
+            {currentItem.overview || 'Stream this block-buster hit now in full High Definition on Zinovis with multi-server support.'}
           </p>
 
           {/* Action Buttons */}
