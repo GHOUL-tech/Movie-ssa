@@ -105,7 +105,11 @@ export const MediaDetailModal: React.FC<MediaDetailModalProps> = ({
   };
 
   const handleShare = () => {
-    navigator.clipboard.writeText(window.location.href);
+    let shareUrl = window.location.href;
+    if (shareUrl.includes('ais-dev')) {
+      shareUrl = shareUrl.replace('ais-dev', 'ais-pre');
+    }
+    navigator.clipboard.writeText(shareUrl);
     setCopiedLink(true);
     setTimeout(() => setCopiedLink(false), 2000);
   };
