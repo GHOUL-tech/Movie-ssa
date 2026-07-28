@@ -207,18 +207,6 @@ export const MediaDetailModal: React.FC<MediaDetailModalProps> = ({
                     </button>
 
                     <button
-                      onClick={() => {
-                        setPreferredServer('vlc_media');
-                        onPlayMedia(detail.id, mediaType, selectedSeasonNum, 1);
-                      }}
-                      className="flex items-center gap-2 px-4 py-3 rounded-xl bg-orange-600 hover:bg-orange-500 text-white font-bold text-sm shadow-xl shadow-orange-600/30 hover:scale-[1.02] transition-all"
-                      title="Stream directly in VLC Media Player"
-                    >
-                      <Play className="w-4 h-4 fill-current" />
-                      <span>VLC Stream</span>
-                    </button>
-
-                    <button
                       onClick={handleToggleWatchlist}
                       className={`flex items-center gap-2 px-4 py-3 rounded-xl font-bold text-sm border transition-all ${
                         inWatchlist

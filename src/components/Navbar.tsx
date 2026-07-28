@@ -33,7 +33,6 @@ export const SERVERS = [
   { id: 'autoembed', name: 'Server 4: AutoEmbed Prime', badge: '1080p HD', description: 'Multi-subtitles & streams' },
   { id: 'twoembed', name: 'Server 5: 2Embed VIP', badge: '1080p HD', description: 'Alternative HD stream' },
   { id: 'smashy', name: 'Server 6: SmashyStream', badge: '1080p HD', description: 'Global multi-server player' },
-  { id: 'vlc_media', name: 'Server 7: VLC Streaming Media', badge: 'VLC Player', description: 'Stream directly in VLC Media Player' },
 ];
 
 export const Navbar: React.FC<NavbarProps> = ({
