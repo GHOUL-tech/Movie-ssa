@@ -310,6 +310,7 @@ export default function App() {
           initialSeason={playerSeason}
           initialEpisode={playerEpisode}
           onClose={() => setPlayerMediaId(null)}
+          onPlayMedia={handlePlayMedia}
         />
       )}
 

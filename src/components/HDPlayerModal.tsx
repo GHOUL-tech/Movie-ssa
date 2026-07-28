@@ -22,6 +22,7 @@ import { MediaType, MediaDetail } from '../types';
 import { getMediaDetail, getSeasonDetail, getImageUrl } from '../services/tmdb';
 import { saveContinueWatching, getPreferredServer, setPreferredServer } from '../utils/storage';
 import { SERVERS } from './Navbar';
+import { Footer } from './Footer';
 
 interface HDPlayerModalProps {
   mediaId: number | null;
@@ -29,6 +30,7 @@ interface HDPlayerModalProps {
   initialSeason?: number;
   initialEpisode?: number;
   onClose: () => void;
+  onPlayMedia?: (id: number, type: MediaType, season?: number, episode?: number) => void;
 }
 
 export const HDPlayerModal: React.FC<HDPlayerModalProps> = ({
@@ -37,6 +39,7 @@ export const HDPlayerModal: React.FC<HDPlayerModalProps> = ({
   initialSeason = 1,
   initialEpisode = 1,
   onClose,
+  onPlayMedia,
 }) => {
   const [detail, setDetail] = useState<MediaDetail | null>(null);
   const [season, setSeason] = useState<number>(initialSeason);
@@ -46,6 +49,12 @@ export const HDPlayerModal: React.FC<HDPlayerModalProps> = ({
   const [showEpisodeDrawer, setShowEpisodeDrawer] = useState(false);
   const [episodesList, setEpisodesList] = useState<any[]>([]);
   const [loadingEpisodes, setLoadingEpisodes] = useState(false);
+
+  // Reset season and episode when mediaId changes
+  useEffect(() => {
+    setSeason(initialSeason);
+    setEpisode(initialEpisode);
+  }, [mediaId, initialSeason, initialEpisode]);
 
   useEffect(() => {
     if (!mediaId) return;
@@ -151,24 +160,25 @@ export const HDPlayerModal: React.FC<HDPlayerModalProps> = ({
       <div className="w-full bg-neutral-950/90 border-b border-neutral-800/80 px-4 py-3 flex items-center justify-between z-20 flex-wrap gap-3">
         
         {/* Title & Specs */}
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-red-600 flex items-center justify-center text-white shadow-lg shadow-red-600/30 font-black text-xs">
-            HD
+        <div className="flex items-center gap-3 cursor-pointer group" onClick={onClose} title="Go back to Home">
+          <div className="w-8 h-8 rounded-lg bg-red-600 flex items-center justify-center text-white shadow-lg shadow-red-600/30 font-black text-xs group-hover:scale-105 transition-transform">
+            <Film className="w-4 h-4" />
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h2 className="text-sm sm:text-base font-black text-white truncate max-w-xs sm:max-w-md">
-                {title}
+              <h2 className="text-sm sm:text-base font-black text-white tracking-wider group-hover:text-red-400 transition-colors">
+                CINE<span className="text-red-500">SCOPE</span>
               </h2>
-              {mediaType === 'tv' && (
-                <span className="px-2 py-0.5 rounded bg-neutral-800 border border-neutral-700 text-xs font-bold text-red-400">
-                  S{season} : E{episode}
-                </span>
-              )}
             </div>
             <div className="flex items-center gap-2 text-[11px] text-neutral-400">
-              <span className="text-emerald-400 font-bold">1080p Ultra HD</span>
-              <span>• Multi-Audio & Subtitles</span>
+              <span className="font-bold truncate max-w-[200px]">
+                {title}
+              </span>
+              {mediaType === 'tv' && (
+                <span className="text-red-400 font-bold">
+                  • S{season} : E{episode}
+                </span>
+              )}
             </div>
           </div>
         </div>
@@ -368,6 +378,54 @@ export const HDPlayerModal: React.FC<HDPlayerModalProps> = ({
           </button>
         </div>
       )}
+
+      {/* Recommendations Section */}
+      {detail && (detail.recommendations?.results?.length || detail.similar?.results?.length) ? (
+        <div className="max-w-7xl mx-auto w-full p-4 space-y-4 pb-12 mt-4">
+          <h3 className="text-lg font-bold text-white flex items-center gap-2">
+            <Sparkles className="w-5 h-5 text-red-500" />
+            More Movies & Series You May Like
+          </h3>
+          <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-4">
+            {Array.from(
+              new Map(
+                [...(detail.recommendations?.results || []), ...(detail.similar?.results || [])]
+                  .filter((item) => item.poster_path)
+                  .map((item) => [item.id, item])
+              ).values()
+            )
+              .slice(0, 24)
+              .map((item: any) => {
+              const itemType = item.media_type || mediaType;
+              const itemTitle = item.title || item.name || 'Untitled';
+              return (
+                <div
+                  key={item.id}
+                  onClick={() => {
+                    if (onPlayMedia) {
+                      onPlayMedia(item.id, itemType, 1, 1);
+                    }
+                  }}
+                  className="group relative aspect-[2/3] rounded-2xl overflow-hidden bg-neutral-950 border border-neutral-800 hover:border-red-500 cursor-pointer shadow transition-all"
+                >
+                  <img
+                    src={getImageUrl(item.poster_path, 'poster')}
+                    alt={itemTitle}
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-neutral-950 via-transparent to-transparent p-3 flex flex-col justify-end">
+                    <h4 className="text-[11px] font-bold text-white truncate">{itemTitle}</h4>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
+
+      <div className="mt-auto w-full bg-neutral-950/90 relative z-20 border-t border-neutral-800/50">
+        <Footer onNavigateTab={() => onClose()} />
+      </div>
 
     </div>
   );
