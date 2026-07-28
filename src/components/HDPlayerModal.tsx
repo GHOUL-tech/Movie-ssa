@@ -16,9 +16,7 @@ import {
   Maximize2,
   ExternalLink,
   Play,
-  Tv2,
-  Shield,
-  ShieldOff
+  Tv2
 } from 'lucide-react';
 import { MediaType, MediaDetail } from '../types';
 import { getMediaDetail, getSeasonDetail, getImageUrl } from '../services/tmdb';
@@ -51,7 +49,6 @@ export const HDPlayerModal: React.FC<HDPlayerModalProps> = ({
   const [showEpisodeDrawer, setShowEpisodeDrawer] = useState(false);
   const [episodesList, setEpisodesList] = useState<any[]>([]);
   const [loadingEpisodes, setLoadingEpisodes] = useState(false);
-  const [adBlockerEnabled, setAdBlockerEnabled] = useState(true);
 
   // Reset season and episode when mediaId changes
   useEffect(() => {
@@ -137,8 +134,8 @@ export const HDPlayerModal: React.FC<HDPlayerModalProps> = ({
     }
     if (targetServer === 'twoembed') {
       return mediaType === 'movie'
-        ? `https://www.2embed.cc/embed/${mediaId}`
-        : `https://www.2embed.cc/embedtv/${mediaId}&s=${season}&e=${episode}`;
+        ? `https://www.2embed.skin/embed/${mediaId}`
+        : `https://www.2embed.skin/embedtv/${mediaId}&s=${season}&e=${episode}`;
     }
     if (targetServer === 'smashy') {
       return mediaType === 'movie'
@@ -232,20 +229,6 @@ export const HDPlayerModal: React.FC<HDPlayerModalProps> = ({
             </button>
           )}
 
-          {/* Ad Blocker Toggle */}
-          <button
-            onClick={() => setAdBlockerEnabled(!adBlockerEnabled)}
-            className={`px-3 py-1.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 transition-all hidden sm:flex ${
-              adBlockerEnabled
-                ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-400'
-                : 'bg-neutral-900 border-neutral-800 text-neutral-400 hover:text-neutral-200'
-            }`}
-            title={adBlockerEnabled ? 'Ad Blocker Enabled (Blocks popups)' : 'Ad Blocker Disabled (Allows popups if player breaks)'}
-          >
-            {adBlockerEnabled ? <Shield className="w-3.5 h-3.5" /> : <ShieldOff className="w-3.5 h-3.5" />}
-            <span>Ad Block</span>
-          </button>
-
           {/* Cinema Mode Toggle */}
           <button
             onClick={() => setCinemaMode(!cinemaMode)}
@@ -281,17 +264,29 @@ export const HDPlayerModal: React.FC<HDPlayerModalProps> = ({
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse flex-shrink-0" />
               <span className="truncate">Active Server: <strong className="text-white">{SERVERS.find(s => s.id === selectedServer)?.name}</strong></span>
             </div>
-            <button
-              onClick={() => {
-                const currentIndex = SERVERS.findIndex(s => s.id === selectedServer);
-                const nextIndex = (currentIndex + 1) % SERVERS.length;
-                handleServerChange(SERVERS[nextIndex].id);
-              }}
-              className="text-xs bg-red-600 hover:bg-red-500 text-white font-bold px-3 py-1 rounded-lg transition-all shadow-md shadow-red-600/20"
-              title="If the current server is not working, click here to try the next one"
-            >
-              Video not working? Auto-Switch
-            </button>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                onClick={() => {
+                  window.open(getEmbedUrl(), '_blank', 'noopener,noreferrer');
+                }}
+                className="text-xs bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-3 py-1 rounded-lg transition-all shadow-md shadow-emerald-600/20 flex items-center gap-1"
+                title="Open the video player in a new tab to bypass sandbox or ad issues"
+              >
+                <ExternalLink className="w-3 h-3" />
+                Open Player in New Tab
+              </button>
+              <button
+                onClick={() => {
+                  const currentIndex = SERVERS.findIndex(s => s.id === selectedServer);
+                  const nextIndex = (currentIndex + 1) % SERVERS.length;
+                  handleServerChange(SERVERS[nextIndex].id);
+                }}
+                className="text-xs bg-red-600 hover:bg-red-500 text-white font-bold px-3 py-1 rounded-lg transition-all shadow-md shadow-red-600/20"
+                title="If the current server is not working, click here to try the next one"
+              >
+                Video not working? Auto-Switch
+              </button>
+            </div>
           </div>
 
           <div className="relative w-full aspect-video bg-black rounded-3xl overflow-hidden border border-neutral-800/80 shadow-2xl shadow-black/90 flex-1">
@@ -304,7 +299,6 @@ export const HDPlayerModal: React.FC<HDPlayerModalProps> = ({
               scrolling="no"
               allowFullScreen
               allow="autoplay; encrypted-media; picture-in-picture; accelerometer; gyroscope; clipboard-write; screen-wake-lock"
-              {...(adBlockerEnabled ? { sandbox: "allow-same-origin allow-scripts allow-presentation" } : {})}
               referrerPolicy="no-referrer"
               className="w-full h-full border-0"
               onError={() => {
