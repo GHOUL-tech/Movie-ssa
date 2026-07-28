@@ -249,11 +249,22 @@ export const HDPlayerModal: React.FC<HDPlayerModalProps> = ({
         
         {/* Render Web HTML5 Player Frame */}
         <div className="flex-1 flex flex-col w-full h-full space-y-2">
-          <div className="flex items-center justify-between px-3 py-2 bg-neutral-900/90 rounded-2xl border border-neutral-800 text-xs text-neutral-300">
+          <div className="flex items-center justify-between px-3 py-2 bg-neutral-900/90 rounded-2xl border border-neutral-800 text-xs text-neutral-300 flex-wrap gap-2">
             <div className="flex items-center gap-2 min-w-0">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse flex-shrink-0" />
               <span className="truncate">Active Server: <strong className="text-white">{SERVERS.find(s => s.id === selectedServer)?.name}</strong></span>
             </div>
+            <button
+              onClick={() => {
+                const currentIndex = SERVERS.findIndex(s => s.id === selectedServer);
+                const nextIndex = (currentIndex + 1) % SERVERS.length;
+                handleServerChange(SERVERS[nextIndex].id);
+              }}
+              className="text-xs bg-red-600 hover:bg-red-500 text-white font-bold px-3 py-1 rounded-lg transition-all shadow-md shadow-red-600/20"
+              title="If the current server is not working, click here to try the next one"
+            >
+              Video not working? Auto-Switch
+            </button>
           </div>
 
           <div className="relative w-full aspect-video bg-black rounded-3xl overflow-hidden border border-neutral-800/80 shadow-2xl shadow-black/90 flex-1">
@@ -268,6 +279,12 @@ export const HDPlayerModal: React.FC<HDPlayerModalProps> = ({
               allow="autoplay; encrypted-media; picture-in-picture; accelerometer; gyroscope; clipboard-write; screen-wake-lock"
               referrerPolicy="no-referrer"
               className="w-full h-full border-0"
+              onError={() => {
+                // Auto-fallback on network error
+                const currentIndex = SERVERS.findIndex(s => s.id === selectedServer);
+                const nextIndex = (currentIndex + 1) % SERVERS.length;
+                handleServerChange(SERVERS[nextIndex].id);
+              }}
             />
           </div>
         </div>
