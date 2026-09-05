@@ -20,7 +20,8 @@ import {
 } from 'lucide-react';
 import { MediaType, MediaDetail } from '../types';
 import { getMediaDetail, getSeasonDetail, getImageUrl } from '../services/tmdb';
-import { saveContinueWatching, getPreferredServer, setPreferredServer } from '../utils/storage';
+import { saveContinueWatching, addToWatchHistory, getPreferredServer, setPreferredServer } from '../utils/storage';
+import { useAuth } from '../context/AuthContext';
 import { SERVERS } from './Navbar';
 import { Footer } from './Footer';
 
@@ -41,6 +42,7 @@ export const HDPlayerModal: React.FC<HDPlayerModalProps> = ({
   onClose,
   onPlayMedia,
 }) => {
+  const { refreshUserData } = useAuth();
   const [detail, setDetail] = useState<MediaDetail | null>(null);
   const [season, setSeason] = useState<number>(initialSeason);
   const [episode, setEpisode] = useState<number>(initialEpisode);
@@ -71,6 +73,18 @@ export const HDPlayerModal: React.FC<HDPlayerModalProps> = ({
           episode: mediaType === 'tv' ? episode : undefined,
           progress_percent: 10,
         });
+        addToWatchHistory({
+          id: data.id,
+          media_type: mediaType,
+          title: data.title || data.name || 'Untitled',
+          poster_path: data.poster_path,
+          backdrop_path: data.backdrop_path,
+          vote_average: data.vote_average,
+          season: mediaType === 'tv' ? season : undefined,
+          episode: mediaType === 'tv' ? episode : undefined,
+          progress_percent: 25,
+        });
+        refreshUserData();
       })
       .catch((err) => console.error('Failed to load detail for player:', err));
   }, [mediaId, mediaType]);
@@ -152,30 +166,30 @@ export const HDPlayerModal: React.FC<HDPlayerModalProps> = ({
   const title = detail?.title || detail?.name || 'Zinovis Player';
 
   return (
-    <div className={`fixed inset-0 z-50 flex flex-col transition-all duration-500 overflow-y-auto ${
+    <div className={`fixed inset-0 z-50 flex flex-col transition-all duration-500 overflow-y-auto overflow-x-hidden w-full max-w-full ${
       cinemaMode ? 'bg-black' : 'bg-neutral-950/95 backdrop-blur-md'
     }`}>
       
       {/* Top Header Controls Bar */}
-      <div className="w-full bg-neutral-950/90 border-b border-neutral-800/80 px-4 md:px-8 py-3 md:py-4 flex items-center justify-between z-20 flex-wrap gap-3">
+      <div className="w-full max-w-full bg-neutral-950/90 border-b border-neutral-800/80 px-3 sm:px-4 md:px-8 py-3 md:py-4 flex items-center justify-between z-20 flex-wrap gap-2 sm:gap-3">
         
         {/* Title & Specs */}
-        <div className="flex items-center gap-3 md:gap-4 cursor-pointer group" onClick={onClose} title="Go back to Home">
-          <div className="w-8 h-8 md:w-12 md:h-12 rounded-lg md:rounded-xl bg-red-600 flex items-center justify-center text-white shadow-lg shadow-red-600/30 font-black text-xs md:text-sm group-hover:scale-105 transition-transform">
+        <div className="flex items-center gap-2 sm:gap-3 md:gap-4 cursor-pointer group" onClick={onClose} title="Go back to Home">
+          <div className="w-8 h-8 md:w-12 md:h-12 rounded-lg md:rounded-xl bg-red-600 flex items-center justify-center text-white shadow-lg shadow-red-600/30 font-black text-xs md:text-sm group-hover:scale-105 transition-transform flex-shrink-0">
             <Film className="w-4 h-4 md:w-6 md:h-6" />
           </div>
-          <div>
+          <div className="min-w-0">
             <div className="flex items-center gap-2">
               <h2 className="text-sm sm:text-base md:text-xl lg:text-2xl font-black text-white tracking-wider group-hover:text-red-400 transition-colors">
                 ZINO<span className="text-red-500">VIS</span>
               </h2>
             </div>
-            <div className="flex items-center gap-2 text-[11px] md:text-sm text-neutral-400">
-              <span className="font-bold truncate max-w-[200px] md:max-w-[400px]">
+            <div className="flex items-center gap-1.5 sm:gap-2 text-[11px] md:text-sm text-neutral-400">
+              <span className="font-bold truncate max-w-[140px] sm:max-w-[240px] md:max-w-[400px]">
                 {title}
               </span>
               {mediaType === 'tv' && (
-                <span className="text-red-400 font-bold">
+                <span className="text-red-400 font-bold whitespace-nowrap">
                   • S{season} : E{episode}
                 </span>
               )}
@@ -184,15 +198,15 @@ export const HDPlayerModal: React.FC<HDPlayerModalProps> = ({
         </div>
 
         {/* Server & Action Switchers */}
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
           
           {/* Server Selector Dropdown */}
-          <div className="flex items-center gap-1.5 bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-1.5 md:px-4 md:py-2">
-            <Monitor className="w-3.5 h-3.5 md:w-5 md:h-5 text-red-500" />
+          <div className="flex items-center gap-1 sm:gap-1.5 bg-neutral-900 border border-neutral-800 rounded-xl px-2.5 py-1.5 sm:px-4 sm:py-2">
+            <Monitor className="w-3.5 h-3.5 sm:w-4 sm:h-4 md:w-5 md:h-5 text-red-500 flex-shrink-0" />
             <select
               value={selectedServer}
               onChange={(e) => handleServerChange(e.target.value)}
-              className="bg-transparent text-white font-bold text-xs md:text-sm focus:outline-none cursor-pointer"
+              className="bg-transparent text-white font-bold text-xs sm:text-sm focus:outline-none cursor-pointer max-w-[120px] sm:max-w-none truncate"
             >
               {SERVERS.map((srv) => (
                 <option key={srv.id} value={srv.id} className="bg-neutral-900 text-white">

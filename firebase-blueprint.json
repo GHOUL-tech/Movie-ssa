@@ -1,0 +1,36 @@
+{
+  "entities": {
+    "User": {
+      "collection": "users",
+      "fields": {
+        "id": { "type": "string", "description": "Unique user account ID" },
+        "username": { "type": "string", "description": "Unique username" },
+        "name": { "type": "string", "description": "Display name" },
+        "email": { "type": "string", "description": "User email address" },
+        "avatar": { "type": "string", "description": "Avatar image URL" },
+        "password": { "type": "string", "description": "Optional account password for login" },
+        "age": { "type": "number", "description": "User age for content filtering" },
+        "country": { "type": "string", "description": "User country" },
+        "isUnder18": { "type": "boolean", "description": "Whether user is under 18" },
+        "createdAt": { "type": "number", "description": "Account creation timestamp" },
+        "watchLater": { "type": "array", "description": "List of saved movies and series" },
+        "watchHistory": { "type": "array", "description": "History of watched titles" },
+        "updatedAt": { "type": "number", "description": "Last update timestamp" }
+      }
+    },
+    "SupportMessage": {
+      "collection": "support_messages",
+      "fields": {
+        "id": { "type": "string", "description": "Unique message ID" },
+        "userId": { "type": "string", "description": "User ID" },
+        "userName": { "type": "string", "description": "User display name" },
+        "userEmail": { "type": "string", "description": "User email" },
+        "userAvatar": { "type": "string", "description": "User avatar" },
+        "message": { "type": "string", "description": "Message text" },
+        "sender": { "type": "string", "description": "Message sender: user or admin" },
+        "createdAt": { "type": "number", "description": "Creation timestamp" },
+        "read": { "type": "boolean", "description": "Whether message has been read" }
+      }
+    }
+  }
+}

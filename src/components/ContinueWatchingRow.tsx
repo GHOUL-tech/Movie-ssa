@@ -30,7 +30,7 @@ export const ContinueWatchingRow: React.FC<ContinueWatchingRowProps> = ({ onPlay
   if (items.length === 0) return null;
 
   return (
-    <section className="my-8 max-w-[2560px] mx-auto px-4 sm:px-6 lg:px-12 2xl:px-24">
+    <section className="my-8 max-w-[2560px] mx-auto px-4 sm:px-6 lg:px-12 2xl:px-24 w-full max-w-full overflow-hidden">
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
           <Clock className="w-5 h-5 2xl:w-8 2xl:h-8 text-red-500" />

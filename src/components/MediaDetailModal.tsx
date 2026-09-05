@@ -18,6 +18,7 @@ import {
 import { MediaDetail, MediaType, Season, Episode } from '../types';
 import { getMediaDetail, getSeasonDetail, getImageUrl, GENRE_MAP } from '../services/tmdb';
 import { isInWatchlist, toggleWatchlist, setPreferredServer } from '../utils/storage';
+import { useAuth } from '../context/AuthContext';
 
 interface MediaDetailModalProps {
   mediaId: number | null;
@@ -32,6 +33,7 @@ export const MediaDetailModal: React.FC<MediaDetailModalProps> = ({
   onClose,
   onPlayMedia,
 }) => {
+  const { refreshUserData } = useAuth();
   const [detail, setDetail] = useState<MediaDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'overview' | 'episodes' | 'trailers' | 'similar'>('overview');
@@ -102,6 +104,7 @@ export const MediaDetailModal: React.FC<MediaDetailModalProps> = ({
       release_date: releaseDate,
     });
     setInWatchlist(updated);
+    refreshUserData();
   };
 
   const handleShare = () => {
@@ -124,7 +127,7 @@ export const MediaDetailModal: React.FC<MediaDetailModalProps> = ({
   const similar = detail?.recommendations?.results?.slice(0, 8) || detail?.similar?.results?.slice(0, 8) || [];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 md:p-6 overflow-y-auto bg-neutral-950/90 backdrop-blur-md animate-fadeIn">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 md:p-6 overflow-y-auto overflow-x-hidden bg-neutral-950/90 backdrop-blur-md animate-fadeIn">
       
       {/* Modal Container */}
       <div className="relative w-full max-w-5xl 2xl:max-w-7xl bg-neutral-900 border border-neutral-800 rounded-3xl shadow-2xl overflow-hidden my-auto max-h-[92vh] flex flex-col">
@@ -157,7 +160,7 @@ export const MediaDetailModal: React.FC<MediaDetailModalProps> = ({
               <div className="absolute inset-0 bg-gradient-to-r from-neutral-900 via-neutral-900/40 to-transparent" />
 
               {/* Media Quick Info Overlay */}
-              <div className="absolute bottom-6 left-6 right-6 flex flex-col sm:flex-row items-start sm:items-end gap-6">
+              <div className="absolute bottom-4 sm:bottom-6 left-4 sm:left-6 right-4 sm:right-6 flex flex-col sm:flex-row items-start sm:items-end gap-4 sm:gap-6">
                 
                 {/* Poster Thumbnail */}
                 <img

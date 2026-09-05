@@ -78,7 +78,7 @@ export const ExploreFilter: React.FC<ExploreFilterProps> = ({
     <div className="fixed inset-0 z-50 flex items-center justify-end bg-neutral-950/80 backdrop-blur-md animate-fadeIn">
       
       {/* Side Filter Drawer Panel */}
-      <div className="w-full max-w-2xl h-full bg-neutral-900 border-l border-neutral-800 p-6 flex flex-col space-y-6 overflow-y-auto shadow-2xl">
+      <div className="w-full max-w-2xl h-full bg-neutral-900 border-l border-neutral-800 p-4 sm:p-6 flex flex-col space-y-6 overflow-y-auto shadow-2xl">
         
         {/* Drawer Header */}
         <div className="flex items-center justify-between pb-4 border-b border-neutral-800">

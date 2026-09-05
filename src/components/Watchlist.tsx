@@ -73,7 +73,7 @@ export const Watchlist: React.FC<WatchlistProps> = ({
   });
 
   return (
-    <div className="pt-28 pb-16 px-4 sm:px-6 lg:px-12 2xl:px-24 max-w-[2560px] mx-auto min-h-screen">
+    <div className="pt-20 sm:pt-24 pb-24 px-4 sm:px-6 lg:px-12 2xl:px-24 max-w-[2560px] mx-auto min-h-screen">
       
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-8 border-b border-neutral-800 pb-6">

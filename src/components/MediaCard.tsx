@@ -20,10 +20,11 @@ export const MediaCard: React.FC<MediaCardProps> = ({
   const releaseDate = item.release_date || item.first_air_date || '';
   const year = releaseDate ? new Date(releaseDate).getFullYear() : '';
 
-  const [inWatchlist, setInWatchlist] = useState(false);
+  const [inWatchlist, setInWatchlist] = useState(() => isInWatchlist(item.id, type));
 
   useEffect(() => {
-    setInWatchlist(isInWatchlist(item.id, type));
+    const status = isInWatchlist(item.id, type);
+    setInWatchlist((prev) => (prev !== status ? status : prev));
   }, [item.id, type]);
 
   const handleToggleWatchlist = (e: React.MouseEvent) => {

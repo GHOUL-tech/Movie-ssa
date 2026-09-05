@@ -36,13 +36,13 @@ export const MediaRow: React.FC<MediaRowProps> = ({
   if (!items || items.length === 0) return null;
 
   return (
-    <section className="relative my-8 sm:my-12 px-4 sm:px-6 lg:px-12 2xl:px-24 max-w-[2560px] mx-auto group/row">
+    <section className="relative my-8 sm:my-12 px-4 sm:px-6 lg:px-12 2xl:px-24 max-w-[2560px] mx-auto group/row w-full max-w-full overflow-hidden">
       
       {/* Section Header */}
       <div className="flex items-end justify-between mb-4">
         <div>
           <div className="flex items-center gap-2">
-            {Icon && <Icon className="w-5 h-5 2xl:w-8 2xl:h-8 text-red-500" />}
+            {Icon && <Icon className="w-5 h-5 2xl:w-8 2xl:h-8 text-red-500 flex-shrink-0" />}
             <h2 className="text-xl sm:text-2xl 2xl:text-4xl font-black text-white tracking-tight">
               {title}
             </h2>
@@ -53,7 +53,7 @@ export const MediaRow: React.FC<MediaRowProps> = ({
         </div>
 
         {/* Scroll Buttons */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-shrink-0">
           <button
             onClick={() => scroll('left')}
             className="p-2 2xl:p-4 rounded-xl bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-white hover:bg-red-600 hover:border-red-500 transition-all"
@@ -74,7 +74,7 @@ export const MediaRow: React.FC<MediaRowProps> = ({
       {/* Horizontal Scroll Area */}
       <div
         ref={rowRef}
-        className="flex items-center gap-4 overflow-x-auto scrollbar-none py-2 px-1 -mx-1"
+        className="flex items-center gap-3 sm:gap-4 overflow-x-auto scrollbar-none py-2 px-1 w-full"
         style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
       >
         {items.map((item) => (

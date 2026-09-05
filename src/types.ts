@@ -25,6 +25,7 @@ export interface MediaItem {
   number_of_episodes?: number;
   tagline?: string;
   status?: string;
+  adult?: boolean;
 }
 
 export interface CastMember {
@@ -113,6 +114,47 @@ export interface ContinueWatchingItem {
   episode_title?: string;
   progress_percent?: number;
   last_watched: number;
+}
+
+export interface WatchHistoryItem {
+  id: number;
+  media_type: MediaType;
+  title: string;
+  poster_path: string | null;
+  backdrop_path: string | null;
+  vote_average: number;
+  watched_at: number;
+  season?: number;
+  episode?: number;
+  episode_title?: string;
+  progress_percent?: number;
+}
+
+export interface User {
+  id: string;
+  username: string;
+  name: string;
+  email: string;
+  password?: string;
+  avatar: string;
+  age?: number;
+  country?: string;
+  isUnder18?: boolean;
+  joinedAt: number;
+  watchHistory: WatchHistoryItem[];
+  watchLater: WatchlistItem[];
+}
+
+export interface SupportMessage {
+  id: string;
+  userId: string;
+  userName: string;
+  userEmail: string;
+  userAvatar?: string;
+  message: string;
+  sender: 'user' | 'admin';
+  createdAt: number;
+  read: boolean;
 }
 
 export interface ServerOption {

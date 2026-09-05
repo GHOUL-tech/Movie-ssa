@@ -1,5 +1,7 @@
 import React from 'react';
-import { Film, ShieldCheck, Sparkles, Monitor, Tv, Heart } from 'lucide-react';
+import { Film, ShieldCheck, Sparkles, Monitor, Tv, Heart, Headphones } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
+import { useNavigate } from 'react-router-dom';
 
 interface FooterProps {
   onSelectGenre?: (genreId: number) => void;
@@ -7,6 +9,16 @@ interface FooterProps {
 }
 
 export const Footer: React.FC<FooterProps> = ({ onNavigateTab }) => {
+  const { isAdmin, openAdminModal, openSupportModal } = useAuth();
+  const navigate = useNavigate();
+
+  const handleAdminAccess = () => {
+    if (isAdmin) {
+      navigate('/admin');
+    } else {
+      openAdminModal();
+    }
+  };
   return (
     <footer className="bg-neutral-950 border-t border-neutral-800/80 pt-12 pb-8 px-4 sm:px-6 lg:px-8 text-neutral-400">
       <div className="max-w-7xl mx-auto space-y-10">
@@ -84,12 +96,26 @@ export const Footer: React.FC<FooterProps> = ({ onNavigateTab }) => {
             </div>
 
             <div className="space-y-2">
-              <h5 className="font-bold text-white uppercase tracking-wider text-[11px]">Features</h5>
+              <h5 className="font-bold text-white uppercase tracking-wider text-[11px]">Support &amp; Portal</h5>
               <ul className="space-y-1.5">
-                <li><button onClick={() => onNavigateTab?.('watchlist')} className="hover:text-white transition-colors">My Watchlist</button></li>
-                <li><span className="text-neutral-400">1080p Ultra HD Player</span></li>
-                <li><span className="text-neutral-400">Multi-Audio & Subtitles</span></li>
-                <li><span className="text-neutral-400">Continue Watching Progress</span></li>
+                <li>
+                  <button 
+                    onClick={openSupportModal} 
+                    className="hover:text-white transition-colors flex items-center gap-1.5 text-neutral-300"
+                  >
+                    <Headphones className="w-3 h-3 text-rose-400" />
+                    <span>Live Support Chat</span>
+                  </button>
+                </li>
+                <li>
+                  <button 
+                    onClick={handleAdminAccess} 
+                    className="hover:text-red-400 transition-colors flex items-center gap-1 text-neutral-400"
+                  >
+                    <span>Admin Access Portal</span>
+                    <Heart className="w-3 h-3 text-red-500 fill-current" />
+                  </button>
+                </li>
               </ul>
             </div>
           </div>
@@ -98,11 +124,17 @@ export const Footer: React.FC<FooterProps> = ({ onNavigateTab }) => {
 
         {/* Bottom Disclaimer */}
         <div className="pt-6 border-t border-neutral-800/60 flex flex-col sm:flex-row items-center justify-between text-xs text-neutral-400 gap-4">
-          <p>© {new Date().getFullYear()} Zinovis Streaming Service. Powered by TMDB API.</p>
-          <div className="flex items-center gap-1 text-[11px]">
+          <p>© {new Date().getFullYear()} Zinovis Streaming Service. Powered by TMDB API &amp; Firebase.</p>
+          <div className="flex items-center gap-1.5 text-[11px]">
             <span>Crafted with</span>
-            <Heart className="w-3 h-3 text-red-500 fill-current" />
-            <span>for HD Cinema Lovers thoes</span>
+            <button
+              onClick={handleAdminAccess}
+              className="p-1 rounded-md hover:bg-neutral-800 transition-all group"
+              title="Admin Portal Access Point (Love Emoji ❤️)"
+            >
+              <Heart className="w-3.5 h-3.5 text-red-500 fill-current group-hover:scale-125 transition-transform" />
+            </button>
+            <span>for HD Cinema Lovers</span>
           </div>
         </div>
 
