@@ -107,15 +107,7 @@ export const Footer: React.FC<FooterProps> = ({ onNavigateTab }) => {
                     <span>Live Support Chat</span>
                   </button>
                 </li>
-                <li>
-                  <button 
-                    onClick={handleAdminAccess} 
-                    className="hover:text-red-400 transition-colors flex items-center gap-1 text-neutral-400"
-                  >
-                    <span>Admin Access Portal</span>
-                    <Heart className="w-3 h-3 text-red-500 fill-current" />
-                  </button>
-                </li>
+
               </ul>
             </div>
           </div>

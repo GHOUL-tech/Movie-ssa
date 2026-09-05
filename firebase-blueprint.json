@@ -31,6 +31,28 @@
         "createdAt": { "type": "number", "description": "Creation timestamp" },
         "read": { "type": "boolean", "description": "Whether message has been read" }
       }
+    },
+    "SubscriptionCode": {
+      "collection": "subscription_codes",
+      "fields": {
+        "id": { "type": "string", "description": "Unique subscription code document ID" },
+        "code": { "type": "string", "description": "Redeemable VIP subscription pass code string" },
+        "tier": { "type": "string", "description": "Subscription tier (one_month, six_months, one_year, permanent)" },
+        "durationDays": { "type": "number", "description": "Duration in days (0 for permanent)" },
+        "createdAt": { "type": "number", "description": "Creation timestamp" },
+        "isRedeemed": { "type": "boolean", "description": "Whether this code has already been redeemed" },
+        "note": { "type": "string", "description": "Admin note or batch tag" },
+        "redeemedAt": { "type": "number", "description": "Timestamp when redeemed" },
+        "redeemedBy": { "type": "object", "description": "Information about the user who redeemed the code" }
+      }
+    },
+    "SystemConfig": {
+      "collection": "system_config",
+      "fields": {
+        "subscriptionRequired": { "type": "boolean", "description": "Whether subscription is globally required to play streams" },
+        "shopUrl": { "type": "string", "description": "Official shop URL where users can buy subscription pass codes" },
+        "updatedAt": { "type": "number", "description": "Last settings update timestamp" }
+      }
     }
   }
 }

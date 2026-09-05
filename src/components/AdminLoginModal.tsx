@@ -151,14 +151,7 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
               )}
             </button>
 
-            <button
-              type="button"
-              onClick={handleQuickFill}
-              className="py-1.5 px-3 rounded-xl bg-neutral-800/60 hover:bg-neutral-800 text-neutral-400 hover:text-neutral-200 text-xs font-medium border border-neutral-700/60 transition-colors flex items-center justify-center gap-1.5"
-            >
-              <KeyRound className="w-3.5 h-3.5 text-amber-400" />
-              <span>Fill Admin ID & Pass</span>
-            </button>
+
           </div>
         </form>
 

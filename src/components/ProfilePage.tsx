@@ -31,10 +31,15 @@ import {
   Server,
   Info,
   CheckCircle2,
-  Save
+  Save,
+  Crown,
+  Tag,
+  ExternalLink,
+  Gift,
+  Zap
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { MediaType, WatchHistoryItem, WatchlistItem } from '../types';
+import { MediaType, WatchHistoryItem, WatchlistItem, SubscriptionTier } from '../types';
 import { 
   getWatchHistory, 
   removeFromWatchHistory, 
@@ -44,7 +49,9 @@ import {
   toggleWatchedStatus, 
   toggleWatchlist, 
   getPreferredServer, 
-  setPreferredServer 
+  setPreferredServer,
+  checkUserHasActiveSubscription,
+  getUserSubscriptionDaysLeft
 } from '../utils/storage';
 import { getImageUrl } from '../services/tmdb';
 import { AVATAR_PRESETS } from '../utils/avatars';
@@ -70,7 +77,10 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
     logout, 
     updateProfile, 
     changePassword,
-    refreshUserData 
+    refreshUserData,
+    redeemSubscriptionCode,
+    isSubscriptionRequired,
+    shopUrl
   } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -120,8 +130,17 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
   const [passwordSuccess, setPasswordSuccess] = useState('');
   const [isSubmittingPass, setIsSubmittingPass] = useState(false);
 
+  // Subscription Code Redemption State
+  const [redemptionCodeInput, setRedemptionCodeInput] = useState('');
+  const [isRedeemingCode, setIsRedeemingCode] = useState(false);
+  const [redeemError, setRedeemError] = useState('');
+  const [redeemSuccess, setRedeemSuccess] = useState('');
+
   // Server preference
   const [preferredServer, setLocalPreferredServer] = useState(getPreferredServer());
+
+  // In-app clear confirmation modal
+  const [clearConfirmModal, setClearConfirmModal] = useState<{ type: 'history' | 'saved'; title: string; message: string } | null>(null);
 
   // Load lists
   const refreshLists = () => {
@@ -154,11 +173,18 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
   };
 
   const handleClearHistory = () => {
-    if (window.confirm('Clear all your watch history?')) {
-      clearWatchHistory();
-      refreshLists();
-      refreshUserData();
-    }
+    setClearConfirmModal({
+      type: 'history',
+      title: 'Clear Watch History',
+      message: 'Are you sure you want to clear all your watch history? This cannot be undone.',
+    });
+  };
+
+  const executeClearHistory = () => {
+    clearWatchHistory();
+    refreshLists();
+    refreshUserData();
+    setClearConfirmModal(null);
   };
 
   // Watch Later Handlers
@@ -178,11 +204,18 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
   };
 
   const handleClearWatchLater = () => {
-    if (window.confirm('Clear your entire Watch Later queue?')) {
-      saveWatchlist([]);
-      setSavedItems([]);
-      refreshUserData();
-    }
+    setClearConfirmModal({
+      type: 'saved',
+      title: 'Clear Watch Later Queue',
+      message: 'Are you sure you want to remove all items from your Watch Later queue?',
+    });
+  };
+
+  const executeClearWatchLater = () => {
+    saveWatchlist([]);
+    setSavedItems([]);
+    refreshUserData();
+    setClearConfirmModal(null);
   };
 
   const handleSaveToWatchLater = (e: React.MouseEvent, item: WatchHistoryItem) => {
@@ -250,6 +283,48 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
       setTimeout(() => setPasswordSuccess(''), 5000);
     } else {
       setPasswordError(result.error || 'Failed to change password. Please check your current password.');
+    }
+  };
+
+  // Subscription Code Redemption Handler
+  const handleRedeemSubscription = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setRedeemError('');
+    setRedeemSuccess('');
+
+    if (!isLoggedIn) {
+      openAuthModal('login');
+      return;
+    }
+
+    if (!redemptionCodeInput.trim()) {
+      setRedeemError('Please enter a valid subscription code to redeem.');
+      return;
+    }
+
+    setIsRedeemingCode(true);
+    try {
+      const result = await redeemSubscriptionCode(redemptionCodeInput.trim());
+      if (result.success) {
+        setRedeemSuccess(result.message);
+        setRedemptionCodeInput('');
+      } else {
+        setRedeemError(result.message);
+      }
+    } catch (err: any) {
+      setRedeemError(err?.message || 'Failed to redeem subscription code. Please try again.');
+    } finally {
+      setIsRedeemingCode(false);
+    }
+  };
+
+  const getTierDisplayName = (tier: SubscriptionTier) => {
+    switch (tier) {
+      case 'one_month': return '1 Month Pass';
+      case 'permanent': return 'Permanent Lifetime VIP';
+      case 'six_months': return '6 Months Pass';
+      case 'one_year': return '1 Year Pass';
+      default: return tier;
     }
   };
 
@@ -1378,6 +1453,202 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
             </div>
           </div>
 
+
+          {/* --------------------------------------------------------------------- */}
+          {/* SECTION 5: VIP SUBSCRIPTION & CODE REDEMPTION */}
+          {/* --------------------------------------------------------------------- */}
+          <div className="p-6 sm:p-8 rounded-3xl bg-neutral-900 border border-neutral-800 shadow-xl space-y-6">
+            <div className="flex items-center justify-between pb-4 border-b border-neutral-800">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-400">
+                  <Crown className="w-5 h-5 fill-amber-400/20" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-white">VIP Subscription &amp; Code Redemption</h3>
+                  <p className="text-xs text-neutral-400">
+                    Manage your VIP streaming pass, buy codes from our official shop, or redeem activation passes.
+                  </p>
+                </div>
+              </div>
+
+              {currentUser && checkUserHasActiveSubscription(currentUser) && (
+                <span className="px-3 py-1 rounded-full bg-amber-500/20 text-amber-300 font-black text-xs border border-amber-500/30 flex items-center gap-1.5 shadow-sm shadow-amber-500/10">
+                  <Crown className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
+                  VIP ACTIVE
+                </span>
+              )}
+            </div>
+
+            {/* Current Subscription Status Card */}
+            <div className="p-5 rounded-2xl bg-neutral-950 border border-neutral-800 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-neutral-400 uppercase tracking-wider">
+                  Your Current Membership Status
+                </span>
+                <span className={`text-xs font-bold ${
+                  currentUser && checkUserHasActiveSubscription(currentUser)
+                    ? 'text-amber-400'
+                    : isSubscriptionRequired
+                    ? 'text-red-400'
+                    : 'text-emerald-400'
+                }`}>
+                  {currentUser && checkUserHasActiveSubscription(currentUser)
+                    ? '👑 VIP Member'
+                    : isSubscriptionRequired
+                    ? '🔒 Subscription Required'
+                    : '✨ Standard Free Streamer'}
+                </span>
+              </div>
+
+              {currentUser && checkUserHasActiveSubscription(currentUser) && currentUser.subscription ? (
+                <div className="space-y-2 pt-1">
+                  <div className="flex flex-wrap items-center justify-between gap-2 p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30">
+                    <div>
+                      <div className="text-sm font-black text-white flex items-center gap-1.5">
+                        <Crown className="w-4 h-4 text-amber-400 fill-amber-400" />
+                        <span>{getTierDisplayName(currentUser.subscription.tier)}</span>
+                      </div>
+                      <div className="text-xs text-amber-200/80 mt-0.5">
+                        {currentUser.subscription.isPermanent
+                          ? 'Permanent Lifetime VIP Access — Never expires!'
+                          : `Expires on ${new Date(currentUser.subscription.expiresAt!).toLocaleDateString()} (${getUserSubscriptionDaysLeft(currentUser)} days left)`}
+                      </div>
+                    </div>
+
+                    <div className="px-3 py-1 rounded-lg bg-amber-500/20 text-amber-300 font-bold text-xs border border-amber-500/40">
+                      {currentUser.subscription.isPermanent ? 'LIFETIME' : `${getUserSubscriptionDaysLeft(currentUser)} DAYS REMAINING`}
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-xs text-neutral-400 leading-relaxed">
+                  {isSubscriptionRequired
+                    ? 'Zinovis is currently operating in VIP Subscription mode. You need an active subscription pass code to play HD streams.'
+                    : 'Zinovis is currently running in Free Streaming mode. You can watch any movie or show for free, or redeem a VIP code for future priority access.'}
+                </p>
+              )}
+            </div>
+
+            {/* Official Store Purchase Link Box */}
+            <div className="p-5 rounded-2xl bg-gradient-to-r from-red-950/40 via-neutral-950 to-neutral-950 border border-red-500/30 space-y-3">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <Tag className="w-4 h-4 text-red-500" />
+                    <h4 className="text-sm font-bold text-white">Buy Subscription Code Online</h4>
+                  </div>
+                  <p className="text-xs text-neutral-300">
+                    You can buy subscription code from this website:
+                  </p>
+                  <div className="font-mono text-xs text-red-400 font-bold break-all">
+                    {shopUrl}
+                  </div>
+                </div>
+
+                <a
+                  href={shopUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-red-600 hover:bg-red-500 text-white text-xs font-bold shadow-lg shadow-red-600/30 transition-all flex-shrink-0"
+                >
+                  <Gift className="w-4 h-4" />
+                  <span>Buy Subscription Code</span>
+                  <ExternalLink className="w-3.5 h-3.5 ml-0.5" />
+                </a>
+              </div>
+            </div>
+
+            {/* Subscription Code Enter Space */}
+            <div className="p-5 rounded-2xl bg-neutral-950 border border-neutral-800 space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-neutral-300 uppercase tracking-wider mb-1.5">
+                  Redeem Subscription Code
+                </label>
+                <p className="text-xs text-neutral-400">
+                  Enter your purchased subscription pass code below to activate or extend your VIP access:
+                </p>
+              </div>
+
+              <form onSubmit={handleRedeemSubscription} className="space-y-3">
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <input
+                    type="text"
+                    placeholder="Enter subscription code (e.g. ZNV-1M-XXXX-XXXX)"
+                    value={redemptionCodeInput}
+                    onChange={(e) => setRedemptionCodeInput(e.target.value)}
+                    className="flex-1 px-4 py-3 bg-neutral-900 border border-neutral-800 focus:border-red-500 rounded-2xl text-xs sm:text-sm text-white font-mono uppercase placeholder:text-neutral-600 focus:outline-none focus:ring-1 focus:ring-red-500"
+                  />
+                  <button
+                    type="submit"
+                    disabled={isRedeemingCode || !redemptionCodeInput.trim()}
+                    className="px-6 py-3 rounded-2xl bg-red-600 hover:bg-red-500 text-white text-xs font-bold shadow-lg shadow-red-600/30 transition-all flex items-center justify-center gap-2 disabled:opacity-50 flex-shrink-0"
+                  >
+                    <Zap className="w-4 h-4 fill-current" />
+                    <span>{isRedeemingCode ? 'Activating...' : 'Redeem Code'}</span>
+                  </button>
+                </div>
+
+                {/* Redeem Error Banner */}
+                {redeemError && (
+                  <div className="p-3.5 rounded-2xl bg-red-500/10 border border-red-500/30 text-red-400 text-xs font-semibold flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                    <span>{redeemError}</span>
+                  </div>
+                )}
+
+                {/* Redeem Success Banner */}
+                {redeemSuccess && (
+                  <div className="p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-semibold flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
+                    <span>{redeemSuccess}</span>
+                  </div>
+                )}
+              </form>
+            </div>
+          </div>
+
+        </div>
+      )}
+
+      {/* In-App Clear Confirmation Modal */}
+      {clearConfirmModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-neutral-950/80 backdrop-blur-md animate-fadeIn">
+          <div className="relative w-full max-w-md bg-neutral-900 border border-neutral-800 rounded-3xl shadow-2xl p-6 space-y-4">
+            <div className="w-12 h-12 rounded-2xl bg-red-500/10 border border-red-500/30 flex items-center justify-center text-red-500 mx-auto">
+              <Trash2 className="w-6 h-6" />
+            </div>
+
+            <div className="text-center space-y-1.5">
+              <h3 className="text-lg font-black text-white">{clearConfirmModal.title}</h3>
+              <p className="text-xs text-neutral-400">
+                {clearConfirmModal.message}
+              </p>
+            </div>
+
+            <div className="flex gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setClearConfirmModal(null)}
+                className="flex-1 px-4 py-2.5 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-white text-xs font-bold transition-all"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (clearConfirmModal.type === 'history') {
+                    executeClearHistory();
+                  } else {
+                    executeClearWatchLater();
+                  }
+                }}
+                className="flex-1 px-4 py-2.5 rounded-xl bg-red-600 hover:bg-red-500 text-white text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-lg shadow-red-600/30"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Confirm Clear</span>
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

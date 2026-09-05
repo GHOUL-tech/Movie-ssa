@@ -28,6 +28,7 @@ export const Watchlist: React.FC<WatchlistProps> = ({
   const [items, setItems] = useState<WatchlistItem[]>([]);
   const [filterType, setFilterType] = useState<'all' | 'movie' | 'tv' | 'watched'>('all');
   const [sortBy, setSortBy] = useState<'recent' | 'rating' | 'title'>('recent');
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
 
   const loadItems = () => {
     setItems(getWatchlist());
@@ -51,10 +52,13 @@ export const Watchlist: React.FC<WatchlistProps> = ({
   };
 
   const handleClearAll = () => {
-    if (window.confirm('Are you sure you want to clear your watchlist?')) {
-      saveWatchlist([]);
-      setItems([]);
-    }
+    setShowClearConfirm(true);
+  };
+
+  const executeClearAll = () => {
+    saveWatchlist([]);
+    setItems([]);
+    setShowClearConfirm(false);
   };
 
   // Filter logic
@@ -246,6 +250,42 @@ export const Watchlist: React.FC<WatchlistProps> = ({
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* In-App Clear Confirmation Modal */}
+      {showClearConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-neutral-950/80 backdrop-blur-md animate-fadeIn">
+          <div className="relative w-full max-w-md bg-neutral-900 border border-neutral-800 rounded-3xl shadow-2xl p-6 space-y-4">
+            <div className="w-12 h-12 rounded-2xl bg-red-500/10 border border-red-500/30 flex items-center justify-center text-red-500 mx-auto">
+              <Trash2 className="w-6 h-6" />
+            </div>
+
+            <div className="text-center space-y-1.5">
+              <h3 className="text-lg font-black text-white">Clear Watchlist</h3>
+              <p className="text-xs text-neutral-400">
+                Are you sure you want to remove all items from your saved watchlist?
+              </p>
+            </div>
+
+            <div className="flex gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowClearConfirm(false)}
+                className="flex-1 px-4 py-2.5 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-white text-xs font-bold transition-all"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={executeClearAll}
+                className="flex-1 px-4 py-2.5 rounded-xl bg-red-600 hover:bg-red-500 text-white text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-lg shadow-red-600/30"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Confirm Clear</span>
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

@@ -1,11 +1,14 @@
-import { ContinueWatchingItem, MediaType, WatchlistItem, WatchHistoryItem, User } from '../types';
+import { ContinueWatchingItem, MediaType, WatchlistItem, WatchHistoryItem, User, SystemSettings, SubscriptionCode, SubscriptionTier, UserSubscription } from '../types';
 import { DEFAULT_AVATAR, getInitialAvatar } from './avatars';
 import { 
   saveUserToFirebase, 
   getUserFromFirebase, 
   syncWatchHistoryToFirebase, 
   syncWatchLaterToFirebase,
-  deleteUserFromFirebase
+  deleteUserFromFirebase,
+  saveSystemSettingsToFirebase,
+  saveSubscriptionCodeToFirebase,
+  deleteSubscriptionCodeFromFirebase
 } from '../services/firebase';
 
 const WATCHLIST_KEY = 'cinescope_watchlist_v1';
@@ -15,6 +18,9 @@ const USERS_KEY = 'zinovis_users_v2';
 const CURRENT_USER_ID_KEY = 'zinovis_current_user_id_v2';
 const GUEST_HISTORY_KEY = 'zinovis_guest_history_v1';
 const ADMIN_SESSION_KEY = 'zinovis_admin_auth_session';
+const SYSTEM_SETTINGS_KEY = 'zinovis_system_settings_v1';
+const SUBSCRIPTION_CODES_KEY = 'zinovis_subscription_codes_v1';
+const DEFAULT_SHOP_URL = 'https://unikagamingshopnew.vercel.app/';
 
 // Seed demo user if no users exist
 function getInitialUsers(): User[] {
@@ -380,6 +386,40 @@ export async function deleteUserAccount(userId: string): Promise<boolean> {
   return true;
 }
 
+export async function adminUpdateUser(
+  userId: string,
+  updates: Partial<Omit<User, 'id' | 'watchHistory' | 'watchLater' | 'joinedAt'>>
+): Promise<{ success: boolean; user?: User; error?: string }> {
+  const users = getAllUsers();
+  const idx = users.findIndex(u => u.id === userId);
+  if (idx < 0) {
+    return { success: false, error: 'User not found in user database.' };
+  }
+
+  const updated: User = {
+    ...users[idx],
+    ...updates,
+  };
+
+  users[idx] = updated;
+  saveUsers(users);
+
+  // If current logged-in user is updated, sync active session
+  const current = getCurrentUser();
+  if (current?.id === userId) {
+    setCurrentUser(updated);
+  }
+
+  // Save to Firebase Firestore backend
+  try {
+    await saveUserToFirebase(updated);
+  } catch (err) {
+    console.error('Failed to sync updated user to Firebase:', err);
+  }
+
+  return { success: true, user: updated };
+}
+
 export function updateUserProfile(updates: Partial<Pick<User, 'name' | 'username' | 'avatar'>>): User | null {
   const current = getCurrentUser();
   if (!current) return null;
@@ -733,3 +773,162 @@ export function getPreferredServer(): string {
 export function setPreferredServer(serverId: string): void {
   localStorage.setItem(PREFERRED_SERVER_KEY, serverId);
 }
+
+// -------------------------------------------------------------
+// System Settings (Subscription Required Toggle & Shop URL)
+// -------------------------------------------------------------
+
+export function getSystemSettings(): SystemSettings {
+  try {
+    const raw = localStorage.getItem(SYSTEM_SETTINGS_KEY);
+    if (raw) {
+      return JSON.parse(raw);
+    }
+  } catch (e) {
+    console.error('Failed to parse system settings:', e);
+  }
+  return {
+    subscriptionRequired: false,
+    shopUrl: DEFAULT_SHOP_URL,
+    updatedAt: Date.now(),
+  };
+}
+
+export function saveSystemSettings(settings: Partial<SystemSettings>): SystemSettings {
+  const current = getSystemSettings();
+  const updated: SystemSettings = {
+    ...current,
+    ...settings,
+    updatedAt: Date.now(),
+  };
+  try {
+    localStorage.setItem(SYSTEM_SETTINGS_KEY, JSON.stringify(updated));
+    saveSystemSettingsToFirebase(updated).catch(e => console.error('Firebase save settings error:', e));
+  } catch (e) {
+    console.error('Failed to save system settings:', e);
+  }
+  return updated;
+}
+
+// -------------------------------------------------------------
+// Subscription Codes Management
+// -------------------------------------------------------------
+
+export function getSubscriptionCodes(): SubscriptionCode[] {
+  try {
+    const raw = localStorage.getItem(SUBSCRIPTION_CODES_KEY);
+    if (raw) {
+      return JSON.parse(raw);
+    }
+  } catch (e) {
+    console.error('Failed to parse subscription codes:', e);
+  }
+  return [];
+}
+
+export function saveSubscriptionCodes(codes: SubscriptionCode[]): void {
+  try {
+    localStorage.setItem(SUBSCRIPTION_CODES_KEY, JSON.stringify(codes));
+  } catch (e) {
+    console.error('Failed to save subscription codes:', e);
+  }
+}
+
+export function createSubscriptionCode(
+  tier: SubscriptionTier, 
+  customCode?: string,
+  note?: string
+): SubscriptionCode {
+  let durationDays = 30;
+  if (tier === 'permanent') durationDays = 0;
+  else if (tier === 'six_months') durationDays = 180;
+  else if (tier === 'one_year') durationDays = 365;
+
+  const codeString = customCode?.trim().toUpperCase() || generateRandomCodeString(tier);
+  const newCode: SubscriptionCode = {
+    id: `sub_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+    code: codeString,
+    tier,
+    durationDays,
+    createdAt: Date.now(),
+    isRedeemed: false,
+    note: note?.trim() || undefined,
+  };
+
+  const codes = getSubscriptionCodes();
+  codes.unshift(newCode);
+  saveSubscriptionCodes(codes);
+  saveSubscriptionCodeToFirebase(newCode).catch(e => console.error('Firebase save code error:', e));
+
+  return newCode;
+}
+
+export function createBatchSubscriptionCodes(
+  tier: SubscriptionTier,
+  count: number,
+  note?: string
+): SubscriptionCode[] {
+  const created: SubscriptionCode[] = [];
+  const existingCodes = getSubscriptionCodes();
+
+  for (let i = 0; i < count; i++) {
+    let durationDays = 30;
+    if (tier === 'permanent') durationDays = 0;
+    else if (tier === 'six_months') durationDays = 180;
+    else if (tier === 'one_year') durationDays = 365;
+
+    const codeString = generateRandomCodeString(tier);
+    const newCode: SubscriptionCode = {
+      id: `sub_${Date.now()}_${Math.random().toString(36).substring(2, 7)}_${i}`,
+      code: codeString,
+      tier,
+      durationDays,
+      createdAt: Date.now() + i,
+      isRedeemed: false,
+      note: note?.trim() || undefined,
+    };
+    created.push(newCode);
+    existingCodes.unshift(newCode);
+    saveSubscriptionCodeToFirebase(newCode).catch(e => console.error('Firebase save code error:', e));
+  }
+
+  saveSubscriptionCodes(existingCodes);
+  return created;
+}
+
+export async function deleteSubscriptionCode(codeId: string): Promise<void> {
+  const codes = getSubscriptionCodes().filter(c => c.id !== codeId);
+  saveSubscriptionCodes(codes);
+  await deleteSubscriptionCodeFromFirebase(codeId).catch(e => console.error('Firebase delete code error:', e));
+}
+
+export function generateRandomCodeString(tier: SubscriptionTier): string {
+  const prefixMap: Record<SubscriptionTier, string> = {
+    one_month: 'ZNV-1M',
+    six_months: 'ZNV-6M',
+    one_year: 'ZNV-1Y',
+    permanent: 'ZNV-PERM',
+  };
+  const prefix = prefixMap[tier] || 'ZNV-VIP';
+  const rand1 = Math.random().toString(36).substring(2, 6).toUpperCase();
+  const rand2 = Math.random().toString(36).substring(2, 6).toUpperCase();
+  return `${prefix}-${rand1}-${rand2}`;
+}
+
+export function checkUserHasActiveSubscription(user: User | null | undefined): boolean {
+  if (!user || !user.subscription) return false;
+  const sub = user.subscription;
+  if (sub.isPermanent || sub.tier === 'permanent') return true;
+  if (!sub.expiresAt) return false;
+  return sub.expiresAt > Date.now();
+}
+
+export function getUserSubscriptionDaysLeft(user: User | null | undefined): number | 'Lifetime' | null {
+  if (!user || !user.subscription) return null;
+  const sub = user.subscription;
+  if (sub.isPermanent || sub.tier === 'permanent' || !sub.expiresAt) return 'Lifetime';
+  const diff = sub.expiresAt - Date.now();
+  if (diff <= 0) return 0;
+  return Math.ceil(diff / (1000 * 60 * 60 * 24));
+}
+

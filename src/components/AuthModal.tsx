@@ -798,17 +798,7 @@ ${EMAILJS_DRAFT_TEMPLATE.plainText}
               )}
             </button>
 
-            {/* Demo One-Click Login */}
-            <div className="pt-2">
-              <button
-                type="button"
-                onClick={handleDemoLogin}
-                className="w-full py-2 px-3 rounded-2xl bg-neutral-950 hover:bg-neutral-800 border border-neutral-800 text-xs font-semibold text-neutral-400 hover:text-white transition-all flex items-center justify-center gap-2 cursor-pointer"
-              >
-                <KeyRound className="w-3.5 h-3.5 text-amber-400" />
-                <span>Fill Demo VIP Account (zinovis_vip)</span>
-              </button>
-            </div>
+
 
             {/* Switch to Sign Up */}
             <div className="pt-3 border-t border-neutral-800/80 text-center">

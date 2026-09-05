@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { User } from '../types';
+import { User, SubscriptionTier, UserSubscription, SystemSettings } from '../types';
 import { 
   getCurrentUser, 
   loginUserAsync, 
@@ -16,9 +16,18 @@ import {
   getAllUsers,
   isAdminAuthenticated,
   loginAdmin as loginAdminStorage,
-  logoutAdmin as logoutAdminStorage
+  logoutAdmin as logoutAdminStorage,
+  getSystemSettings,
+  saveSystemSettings,
+  checkUserHasActiveSubscription,
+  getUserSubscriptionDaysLeft
 } from '../utils/storage';
-import { subscribeToUserDoc } from '../services/firebase';
+import { 
+  subscribeToUserDoc, 
+  subscribeToSystemSettings, 
+  redeemSubscriptionCodeInFirebase, 
+  saveSystemSettingsToFirebase 
+} from '../services/firebase';
 
 interface AuthContextType {
   currentUser: User | null;
@@ -30,6 +39,14 @@ interface AuthContextType {
   isAdmin: boolean;
   isAdminModalOpen: boolean;
   isSupportModalOpen: boolean;
+  // Subscription System
+  isSubscriptionRequired: boolean;
+  setIsSubscriptionRequired: (required: boolean) => Promise<void>;
+  hasActiveSubscription: boolean;
+  subscriptionDaysLeft: number | 'Lifetime' | null;
+  shopUrl: string;
+  redeemSubscriptionCode: (code: string) => Promise<{ success: boolean; message: string; tier?: SubscriptionTier }>;
+  // Auth & Admin Actions
   openAuthModal: (tab?: 'login' | 'signup') => void;
   closeAuthModal: () => void;
   openAdminModal: () => void;
@@ -73,17 +90,30 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [watchHistoryCount, setWatchHistoryCount] = useState(0);
   const [isFirebaseSynced, setIsFirebaseSynced] = useState(true);
 
+  // System Settings State
+  const [systemSettings, setSystemSettingsState] = useState<SystemSettings>(getSystemSettings());
+
   const refreshUserData = useCallback(() => {
     const user = getCurrentUser();
     setCurrentUserState(user);
     setWatchLaterCount(getWatchlist().length);
     setWatchHistoryCount(getWatchHistory().length);
     setIsAdmin(isAdminAuthenticated());
+    setSystemSettingsState(getSystemSettings());
   }, []);
 
   useEffect(() => {
     refreshUserData();
   }, [refreshUserData]);
+
+  // Real-time listener for System Settings (Subscription toggle & shop URL)
+  useEffect(() => {
+    const unsubscribe = subscribeToSystemSettings((settings) => {
+      setSystemSettingsState(settings);
+      saveSystemSettings(settings);
+    });
+    return () => unsubscribe();
+  }, []);
 
   // Real-time Firestore sync listener for logged-in user
   useEffect(() => {
@@ -111,6 +141,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           prev.age === remoteUser.age &&
           prev.country === remoteUser.country &&
           prev.email === remoteUser.email &&
+          JSON.stringify(prev.subscription) === JSON.stringify(remoteUser.subscription) &&
           (prev.watchLater?.length || 0) === (remoteUser.watchLater?.length || 0) &&
           (prev.watchHistory?.length || 0) === (remoteUser.watchHistory?.length || 0)
         ) {
@@ -141,6 +172,42 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const closeAuthModal = () => {
     setIsAuthModalOpen(false);
   };
+
+  const setIsSubscriptionRequired = async (required: boolean) => {
+    const updated = saveSystemSettings({ subscriptionRequired: required });
+    setSystemSettingsState(updated);
+    await saveSystemSettingsToFirebase({ subscriptionRequired: required });
+  };
+
+  const redeemSubscriptionCode = async (code: string): Promise<{ success: boolean; message: string; tier?: SubscriptionTier }> => {
+    if (!currentUser) {
+      return { success: false, message: 'Please sign in or create an account to redeem your subscription code.' };
+    }
+
+    try {
+      const res = await redeemSubscriptionCodeInFirebase(code, currentUser);
+      if (res.success && res.subscription) {
+        // Update user locally
+        const updatedUser = {
+          ...currentUser,
+          subscription: res.subscription,
+        };
+        const users = getAllUsers();
+        const idx = users.findIndex(u => u.id === currentUser.id);
+        if (idx >= 0) {
+          users[idx] = updatedUser;
+          saveUsersLocally(users);
+        }
+        setCurrentUserState(updatedUser);
+      }
+      return res;
+    } catch (err: any) {
+      return { success: false, message: err.message || 'Failed to redeem code' };
+    }
+  };
+
+  const hasActiveSubscription = checkUserHasActiveSubscription(currentUser);
+  const subscriptionDaysLeft = getUserSubscriptionDaysLeft(currentUser);
 
   const login = async (identifier: string, password?: string) => {
     try {
@@ -251,6 +318,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isAdmin,
         isAdminModalOpen,
         isSupportModalOpen,
+        isSubscriptionRequired: systemSettings.subscriptionRequired,
+        setIsSubscriptionRequired,
+        hasActiveSubscription,
+        subscriptionDaysLeft,
+        shopUrl: systemSettings.shopUrl || 'https://unikagamingshopnew.vercel.app/',
+        redeemSubscriptionCode,
         openAuthModal,
         closeAuthModal,
         openAdminModal,
@@ -283,3 +356,4 @@ export const useAuth = (): AuthContextType => {
   }
   return context;
 };
+

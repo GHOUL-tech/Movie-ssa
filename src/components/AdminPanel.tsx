@@ -8,7 +8,6 @@ import {
   TrendingUp, 
   ShieldCheck, 
   Trash2, 
-  Eye, 
   LogOut, 
   Search, 
   RefreshCw, 
@@ -24,20 +23,69 @@ import {
   AlertTriangle,
   ArrowLeft,
   Filter,
-  Check
+  Check,
+  KeyRound,
+  Crown,
+  CreditCard,
+  Plus,
+  Copy,
+  ExternalLink,
+  ToggleLeft,
+  ToggleRight,
+  Zap,
+  CheckCheck,
+  Lock,
+  Unlock,
+  Tag,
+  AlertCircle,
+  UserCog,
+  Edit3,
+  Save,
+  Key,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { User, SupportMessage, MediaItem, WatchHistoryItem } from '../types';
-import { getAllUsersFromFirebase, deleteUserFromFirebase, sendSupportMessageToFirebase, subscribeToAllSupportMessages } from '../services/firebase';
-import { getAllUsers, deleteUserAccount } from '../utils/storage';
+import { User, SupportMessage, MediaItem, WatchHistoryItem, SubscriptionCode, SubscriptionTier, UserSubscription } from '../types';
+import { 
+  getAllUsersFromFirebase, 
+  deleteUserFromFirebase, 
+  sendSupportMessageToFirebase, 
+  subscribeToAllSupportMessages,
+  subscribeToSubscriptionCodes,
+  saveSubscriptionCodeToFirebase,
+  deleteSubscriptionCodeFromFirebase,
+  saveUserToFirebase
+} from '../services/firebase';
+import { 
+  getAllUsers, 
+  deleteUserAccount,
+  adminUpdateUser,
+  getSubscriptionCodes,
+  createSubscriptionCode,
+  createBatchSubscriptionCodes,
+  deleteSubscriptionCode,
+  generateRandomCodeString,
+  saveUsersLocally,
+  getUserSubscriptionDaysLeft,
+  checkUserHasActiveSubscription
+} from '../utils/storage';
+import { AVATAR_PRESETS } from '../utils/avatars';
 import { getTrending, getImageUrl } from '../services/tmdb';
 
 export const AdminPanel: React.FC = () => {
-  const { isAdmin, logoutAdmin } = useAuth();
+  const { 
+    isAdmin, 
+    logoutAdmin, 
+    isSubscriptionRequired, 
+    setIsSubscriptionRequired, 
+    shopUrl,
+    refreshUserData 
+  } = useAuth();
   const navigate = useNavigate();
 
-  const [activeTab, setActiveTab] = useState<'analytics' | 'users' | 'movies' | 'support'>('analytics');
+  const [activeTab, setActiveTab] = useState<'analytics' | 'users' | 'movies' | 'subscriptions' | 'support'>('analytics');
   const [users, setUsers] = useState<User[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(true);
   const [trendingMedia, setTrendingMedia] = useState<MediaItem[]>([]);
@@ -47,6 +95,36 @@ export const AdminPanel: React.FC = () => {
   const [userSearch, setUserSearch] = useState('');
   const [inspectingUser, setInspectingUser] = useState<User | null>(null);
   const [deletingUserId, setDeletingUserId] = useState<string | null>(null);
+
+  // Subscription System State
+  const [subscriptionCodes, setSubscriptionCodes] = useState<SubscriptionCode[]>(getSubscriptionCodes());
+  const [subCodeSearch, setSubCodeSearch] = useState('');
+  const [subCodeTierFilter, setSubCodeTierFilter] = useState<'all' | SubscriptionTier>('all');
+  const [subCodeStatusFilter, setSubCodeStatusFilter] = useState<'all' | 'available' | 'redeemed'>('all');
+  
+  // Code Generator Form State
+  const [genTier, setGenTier] = useState<SubscriptionTier>('one_month');
+  const [genCustomCode, setGenCustomCode] = useState('');
+  const [genBatchCount, setGenBatchCount] = useState<number>(1);
+  const [genNote, setGenNote] = useState('');
+  const [generatedCodesResult, setGeneratedCodesResult] = useState<SubscriptionCode[] | null>(null);
+  const [copiedCode, setCopiedCode] = useState<string | null>(null);
+  const [copiedShopUrl, setCopiedShopUrl] = useState(false);
+  const [isTogglingGate, setIsTogglingGate] = useState(false);
+  const [deletingCodeId, setDeletingCodeId] = useState<string | null>(null);
+  const [confirmDeleteCode, setConfirmDeleteCode] = useState<{ id: string; code: string } | null>(null);
+  const [confirmDeleteUser, setConfirmDeleteUser] = useState<{ id: string; name: string; email: string } | null>(null);
+
+  // Edit User State
+  const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [editFormName, setEditFormName] = useState('');
+  const [editFormUsername, setEditFormUsername] = useState('');
+  const [editFormEmail, setEditFormEmail] = useState('');
+  const [editFormPassword, setEditFormPassword] = useState('');
+  const [editFormAge, setEditFormAge] = useState<number | ''>('');
+  const [editFormCountry, setEditFormCountry] = useState('');
+  const [editFormAvatar, setEditFormAvatar] = useState('');
+  const [showInspectPass, setShowInspectPass] = useState(false);
 
   // If not admin, redirect to home
   useEffect(() => {
@@ -81,11 +159,19 @@ export const AdminPanel: React.FC = () => {
     getTrending('all', 'week').then(setTrendingMedia).catch(console.error);
 
     // Subscribe to support messages
-    const unsubscribe = subscribeToAllSupportMessages((msgs) => {
+    const unsubscribeSupport = subscribeToAllSupportMessages((msgs) => {
       setSupportMessages(msgs);
     });
 
-    return () => unsubscribe();
+    // Subscribe to subscription codes in real-time
+    const unsubscribeCodes = subscribeToSubscriptionCodes((codes) => {
+      setSubscriptionCodes(codes);
+    });
+
+    return () => {
+      unsubscribeSupport();
+      unsubscribeCodes();
+    };
   }, []);
 
   // Filtered users list
@@ -100,6 +186,233 @@ export const AdminPanel: React.FC = () => {
       (u.country && u.country.toLowerCase().includes(query))
     );
   }, [users, userSearch]);
+
+  // Subscription Codes Filtered List
+  const filteredSubscriptionCodes = useMemo(() => {
+    return subscriptionCodes.filter((c) => {
+      if (subCodeSearch.trim()) {
+        const q = subCodeSearch.toLowerCase();
+        const matchCode = c.code.toLowerCase().includes(q);
+        const matchNote = c.note?.toLowerCase().includes(q);
+        const matchUser = c.redeemedBy?.userName.toLowerCase().includes(q) || c.redeemedBy?.userEmail.toLowerCase().includes(q);
+        if (!matchCode && !matchNote && !matchUser) return false;
+      }
+      if (subCodeTierFilter !== 'all' && c.tier !== subCodeTierFilter) {
+        return false;
+      }
+      if (subCodeStatusFilter === 'available' && c.isRedeemed) return false;
+      if (subCodeStatusFilter === 'redeemed' && !c.isRedeemed) return false;
+      return true;
+    });
+  }, [subscriptionCodes, subCodeSearch, subCodeTierFilter, subCodeStatusFilter]);
+
+  // Subscription stats
+  const totalSubCodesCount = subscriptionCodes.length;
+  const availableCodesCount = subscriptionCodes.filter(c => !c.isRedeemed).length;
+  const redeemedCodesCount = subscriptionCodes.filter(c => c.isRedeemed).length;
+  const activeSubscribedUsersCount = users.filter(u => checkUserHasActiveSubscription(u)).length;
+
+  // Toggle Global Subscription Requirement
+  const handleToggleSubscriptionGate = async () => {
+    setIsTogglingGate(true);
+    try {
+      await setIsSubscriptionRequired(!isSubscriptionRequired);
+    } catch (err) {
+      console.error('Failed to toggle subscription requirement:', err);
+    } finally {
+      setIsTogglingGate(false);
+    }
+  };
+
+  // Generate Codes Handler
+  const handleGenerateCodes = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (genBatchCount > 1) {
+      const newCodes = createBatchSubscriptionCodes(genTier, genBatchCount, genNote.trim() || undefined);
+      setGeneratedCodesResult(newCodes);
+      setSubscriptionCodes(getSubscriptionCodes());
+    } else {
+      const newCode = createSubscriptionCode(genTier, genCustomCode.trim() || undefined, genNote.trim() || undefined);
+      setGeneratedCodesResult([newCode]);
+      setSubscriptionCodes(getSubscriptionCodes());
+    }
+    setGenCustomCode('');
+    setGenNote('');
+  };
+
+  // Delete / Revoke Code
+  const executeDeleteCode = async (id: string) => {
+    setDeletingCodeId(id);
+    try {
+      await deleteSubscriptionCode(id);
+      setSubscriptionCodes(prev => prev.filter(c => c.id !== id));
+      setConfirmDeleteCode(null);
+    } catch (err) {
+      console.error('Delete code error:', err);
+    } finally {
+      setDeletingCodeId(null);
+    }
+  };
+
+  // Copy Single Code
+  const handleCopyCode = (codeStr: string, id: string) => {
+    navigator.clipboard.writeText(codeStr);
+    setCopiedCode(id);
+    setTimeout(() => setCopiedCode(null), 2000);
+  };
+
+  // Copy All Generated Codes
+  const handleCopyAllGenerated = () => {
+    if (!generatedCodesResult) return;
+    const text = generatedCodesResult.map(c => `${c.code} [${getTierDisplayName(c.tier)}]`).join('\n');
+    navigator.clipboard.writeText(text);
+    setCopiedCode('all');
+    setTimeout(() => setCopiedCode(null), 2000);
+  };
+
+  // Copy Shop URL
+  const handleCopyShopUrl = () => {
+    navigator.clipboard.writeText(shopUrl);
+    setCopiedShopUrl(true);
+    setTimeout(() => setCopiedShopUrl(false), 2000);
+  };
+
+  // Grant Subscription to User directly
+  const handleGrantUserSubscription = async (userId: string, tier: SubscriptionTier) => {
+    const userIdx = users.findIndex(u => u.id === userId);
+    if (userIdx < 0) return;
+
+    const now = Date.now();
+    let expiresAt: number | null = null;
+    let isPermanent = false;
+
+    if (tier === 'permanent') {
+      isPermanent = true;
+      expiresAt = null;
+    } else if (tier === 'one_month') {
+      expiresAt = now + 30 * 24 * 60 * 60 * 1000;
+    } else if (tier === 'six_months') {
+      expiresAt = now + 180 * 24 * 60 * 60 * 1000;
+    } else if (tier === 'one_year') {
+      expiresAt = now + 365 * 24 * 60 * 60 * 1000;
+    }
+
+    const newSub: UserSubscription = {
+      tier,
+      startDate: now,
+      expiresAt,
+      isPermanent,
+      codeUsed: 'ADMIN_GRANT',
+    };
+
+    const updatedUser = { ...users[userIdx], subscription: newSub };
+    const updatedUsers = [...users];
+    updatedUsers[userIdx] = updatedUser;
+    setUsers(updatedUsers);
+    saveUsersLocally(updatedUsers);
+    await saveUserToFirebase(updatedUser);
+    if (inspectingUser?.id === userId) {
+      setInspectingUser(updatedUser);
+    }
+  };
+
+  // Revoke Subscription from User directly
+  const handleRevokeUserSubscription = async (userId: string) => {
+    const userIdx = users.findIndex(u => u.id === userId);
+    if (userIdx < 0) return;
+
+    const updatedUser = { ...users[userIdx] };
+    delete updatedUser.subscription;
+    const updatedUsers = [...users];
+    updatedUsers[userIdx] = updatedUser;
+    setUsers(updatedUsers);
+    saveUsersLocally(updatedUsers);
+    await saveUserToFirebase(updatedUser);
+    if (inspectingUser?.id === userId) {
+      setInspectingUser(updatedUser);
+    }
+  };
+
+  // Edit User Handlers
+  const handleOpenEditUser = (u: User) => {
+    setEditingUser(u);
+    setEditFormName(u.name || '');
+    setEditFormUsername(u.username || '');
+    setEditFormEmail(u.email || '');
+    setEditFormPassword(u.password || '');
+    setEditFormAge(u.age ?? '');
+    setEditFormCountry(u.country || '');
+    setEditFormAvatar(u.avatar || '');
+  };
+
+  const handleSaveEditedUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingUser) return;
+
+    const updates = {
+      name: editFormName.trim() || editingUser.name,
+      username: editFormUsername.trim() || editingUser.username,
+      email: editFormEmail.trim() || editingUser.email,
+      password: editFormPassword.trim() || editingUser.password,
+      age: editFormAge === '' ? undefined : Number(editFormAge),
+      country: editFormCountry.trim() || editingUser.country,
+      avatar: editFormAvatar.trim() || editingUser.avatar,
+    };
+
+    const res = await adminUpdateUser(editingUser.id, updates);
+    if (res.success && res.user) {
+      setUsers(getAllUsers());
+      if (inspectingUser?.id === editingUser.id) {
+        setInspectingUser(res.user);
+      }
+      setEditingUser(null);
+    }
+  };
+
+  // Tier helper display info
+  const getTierDisplayName = (tier: SubscriptionTier) => {
+    switch (tier) {
+      case 'one_month': return '1 Month Pass';
+      case 'permanent': return 'Permanent Lifetime VIP';
+      case 'six_months': return '6 Months Pass';
+      case 'one_year': return '1 Year Pass';
+      default: return tier;
+    }
+  };
+
+  const getTierBadge = (tier: SubscriptionTier) => {
+    switch (tier) {
+      case 'permanent':
+        return (
+          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-300 font-black text-[11px] shadow-sm shadow-amber-500/10">
+            <Crown className="w-3 h-3 text-amber-400 fill-amber-400" />
+            <span>Permanent VIP</span>
+          </span>
+        );
+      case 'one_year':
+        return (
+          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-purple-500/15 border border-purple-500/30 text-purple-300 font-bold text-[11px]">
+            <Sparkles className="w-3 h-3 text-purple-400" />
+            <span>1 Year VIP</span>
+          </span>
+        );
+      case 'six_months':
+        return (
+          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-blue-500/15 border border-blue-500/30 text-blue-300 font-bold text-[11px]">
+            <Zap className="w-3 h-3 text-blue-400" />
+            <span>6 Months VIP</span>
+          </span>
+        );
+      case 'one_month':
+      default:
+        return (
+          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 font-bold text-[11px]">
+            <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+            <span>1 Month VIP</span>
+          </span>
+        );
+    }
+  };
 
   // Analytics Computations
   const totalUsersCount = users.length;
@@ -159,10 +472,7 @@ export const AdminPanel: React.FC = () => {
   }, [users]);
 
   // Handle Delete User
-  const handleDeleteUser = async (userId: string) => {
-    if (!window.confirm('Are you sure you want to permanently delete this user account from Zinovis & Firebase?')) {
-      return;
-    }
+  const executeDeleteUser = async (userId: string) => {
     setDeletingUserId(userId);
     try {
       await deleteUserAccount(userId);
@@ -170,6 +480,7 @@ export const AdminPanel: React.FC = () => {
       if (inspectingUser?.id === userId) {
         setInspectingUser(null);
       }
+      setConfirmDeleteUser(null);
     } catch (err) {
       console.error('Delete failed:', err);
     } finally {
@@ -310,6 +621,18 @@ export const AdminPanel: React.FC = () => {
           >
             <Film className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">Most Watched</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('subscriptions')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-semibold transition-all ${
+              activeTab === 'subscriptions'
+                ? 'bg-red-600 text-white shadow-md shadow-red-600/30'
+                : 'text-neutral-400 hover:text-white'
+            }`}
+          >
+            <Crown className="w-3.5 h-3.5 text-amber-400" />
+            <span className="hidden sm:inline">Subscriptions ({subscriptionCodes.length})</span>
           </button>
 
           <button
@@ -575,6 +898,7 @@ export const AdminPanel: React.FC = () => {
                     <tr>
                       <th className="py-3.5 px-4">User</th>
                       <th className="py-3.5 px-4">Email</th>
+                      <th className="py-3.5 px-4">Subscription</th>
                       <th className="py-3.5 px-4">Age &amp; Filter Mode</th>
                       <th className="py-3.5 px-4">Country</th>
                       <th className="py-3.5 px-4 text-center">Watched</th>
@@ -585,6 +909,9 @@ export const AdminPanel: React.FC = () => {
                   <tbody className="divide-y divide-neutral-800/60">
                     {filteredUsers.map((u) => {
                       const isMinor = u.isUnder18 || (u.age !== undefined && u.age < 18);
+                      const hasActiveSub = checkUserHasActiveSubscription(u);
+                      const daysLeft = getUserSubscriptionDaysLeft(u);
+
                       return (
                         <tr key={u.id} className="hover:bg-neutral-800/40 transition-colors">
                           <td className="py-3 px-4">
@@ -602,6 +929,24 @@ export const AdminPanel: React.FC = () => {
                           </td>
 
                           <td className="py-3 px-4 text-neutral-300 text-xs">{u.email}</td>
+
+                          {/* Subscription Column */}
+                          <td className="py-3 px-4">
+                            {hasActiveSub && u.subscription ? (
+                              <div className="flex flex-col gap-1">
+                                {getTierBadge(u.subscription.tier)}
+                                <span className="text-[10px] text-neutral-400">
+                                  {u.subscription.isPermanent 
+                                    ? 'Lifetime Access' 
+                                    : `${daysLeft} days remaining`}
+                                </span>
+                              </div>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-neutral-800/80 border border-neutral-700 text-neutral-400 text-[10px] font-medium">
+                                Free User
+                              </span>
+                            )}
+                          </td>
 
                           <td className="py-3 px-4">
                             <div className="flex flex-col gap-1">
@@ -648,6 +993,14 @@ export const AdminPanel: React.FC = () => {
                               </button>
 
                               <button
+                                onClick={() => handleOpenEditUser(u)}
+                                className="p-1.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 transition-colors"
+                                title="Edit User Info"
+                              >
+                                <Edit3 className="w-4 h-4" />
+                              </button>
+
+                              <button
                                 onClick={() => {
                                   setSelectedUserForChat(u.id);
                                   setActiveTab('support');
@@ -659,7 +1012,7 @@ export const AdminPanel: React.FC = () => {
                               </button>
 
                               <button
-                                onClick={() => handleDeleteUser(u.id)}
+                                onClick={() => setConfirmDeleteUser({ id: u.id, name: u.name || u.username, email: u.email })}
                                 disabled={deletingUserId === u.id}
                                 className="p-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 transition-colors"
                                 title="Delete User Account"
@@ -812,7 +1165,515 @@ export const AdminPanel: React.FC = () => {
           </div>
         )}
 
-        {/* ===================== TAB 4: LIVE SUPPORT CHAT OPTION ===================== */}
+        {/* ===================== TAB 4: SUBSCRIPTION MANAGEMENT ===================== */}
+        {activeTab === 'subscriptions' && (
+          <div className="space-y-8 animate-fadeIn">
+            {/* Header & Global Gate Switch Banner */}
+            <div className="p-6 sm:p-8 rounded-3xl bg-neutral-900 border border-neutral-800 shadow-2xl space-y-6">
+              <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 pb-6 border-b border-neutral-800">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2.5">
+                    <div className="p-2.5 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-400">
+                      <Crown className="w-5 h-5 fill-amber-400/20" />
+                    </div>
+                    <div>
+                      <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                        <span>Subscription System &amp; VIP Gate</span>
+                      </h2>
+                      <p className="text-xs text-neutral-400">
+                        Control global platform monetization, generate 4-tier subscription passes, and monitor redemptions
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Master Global Switch */}
+                <div className="flex items-center gap-3 bg-neutral-950 p-2 pl-4 pr-3 rounded-2xl border border-neutral-800 shadow-inner">
+                  <div className="flex flex-col text-right">
+                    <span className="text-xs font-bold text-white">Global Subscription Gate</span>
+                    <span className={`text-[11px] font-semibold ${isSubscriptionRequired ? 'text-amber-400' : 'text-emerald-400'}`}>
+                      {isSubscriptionRequired ? '🔒 VIP Required Mode' : '🟢 Free Mode (Open to All)'}
+                    </span>
+                  </div>
+
+                  <button
+                    onClick={handleToggleSubscriptionGate}
+                    disabled={isTogglingGate}
+                    className={`relative inline-flex h-8 w-16 items-center rounded-full transition-colors focus:outline-none p-1 ${
+                      isSubscriptionRequired ? 'bg-red-600' : 'bg-neutral-700'
+                    }`}
+                    title={isSubscriptionRequired ? 'Click to switch to Free Mode' : 'Click to require Subscription'}
+                  >
+                    <span
+                      className={`inline-block h-6 w-6 transform rounded-full bg-white transition-transform shadow-md ${
+                        isSubscriptionRequired ? 'translate-x-8' : 'translate-x-0'
+                      }`}
+                    />
+                  </button>
+                </div>
+              </div>
+
+              {/* Status Explanation Banner */}
+              <div className={`p-4 rounded-2xl border flex items-start gap-3.5 ${
+                isSubscriptionRequired
+                  ? 'bg-amber-500/10 border-amber-500/30 text-amber-200'
+                  : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-200'
+              }`}>
+                {isSubscriptionRequired ? (
+                  <Lock className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
+                ) : (
+                  <Unlock className="w-5 h-5 text-emerald-400 flex-shrink-0 mt-0.5" />
+                )}
+                <div className="text-xs space-y-1">
+                  <div className="font-bold text-sm text-white">
+                    {isSubscriptionRequired
+                      ? '👑 VIP Subscription Requirement is ACTIVE'
+                      : '✨ Free Streaming Mode is ACTIVE'}
+                  </div>
+                  <p className="leading-relaxed opacity-90">
+                    {isSubscriptionRequired
+                      ? 'Visitors and registered users cannot play HD streams without entering an active subscription code. The video player will prompt them with the VIP paywall and provide a link to the Unika Gaming Shop.'
+                      : 'Anyone can stream movies and TV shows for free. Subscription codes are optional or can be pre-purchased for future activation.'}
+                  </p>
+                </div>
+              </div>
+
+              {/* Official Store Link Box */}
+              <div className="p-4.5 rounded-2xl bg-neutral-950/80 border border-neutral-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-xl bg-red-600/10 text-red-400 border border-red-600/20">
+                    <Tag className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="text-xs font-bold text-white">Official Subscription Shop Website</div>
+                    <div className="text-[11px] text-neutral-400">
+                      Users buy subscription codes here: <span className="text-red-400 font-mono font-bold">{shopUrl}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 w-full sm:w-auto">
+                  <button
+                    onClick={handleCopyShopUrl}
+                    className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-neutral-900 hover:bg-neutral-800 border border-neutral-700 text-xs font-semibold text-neutral-200 hover:text-white transition-all"
+                  >
+                    {copiedShopUrl ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                    <span>{copiedShopUrl ? 'Copied Shop Link!' : 'Copy Shop URL'}</span>
+                  </button>
+
+                  <a
+                    href={shopUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl bg-red-600 hover:bg-red-500 text-white text-xs font-bold shadow-lg shadow-red-600/20 transition-all"
+                  >
+                    <span>Visit Shop</span>
+                    <ExternalLink className="w-3.5 h-3.5" />
+                  </a>
+                </div>
+              </div>
+            </div>
+
+            {/* Quick Stats Grid */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+              <div className="p-4 rounded-2xl bg-neutral-900 border border-neutral-800">
+                <div className="text-[11px] font-bold text-neutral-400 uppercase tracking-wider">Total Codes</div>
+                <div className="text-2xl font-black text-white mt-1">{totalSubCodesCount}</div>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-neutral-900 border border-neutral-800">
+                <div className="text-[11px] font-bold text-emerald-400 uppercase tracking-wider">Available Codes</div>
+                <div className="text-2xl font-black text-emerald-400 mt-1">{availableCodesCount}</div>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-neutral-900 border border-neutral-800">
+                <div className="text-[11px] font-bold text-purple-400 uppercase tracking-wider">Redeemed Codes</div>
+                <div className="text-2xl font-black text-purple-400 mt-1">{redeemedCodesCount}</div>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-neutral-900 border border-neutral-800">
+                <div className="text-[11px] font-bold text-amber-400 uppercase tracking-wider">Active VIP Users</div>
+                <div className="text-2xl font-black text-amber-400 mt-1">{activeSubscribedUsersCount}</div>
+              </div>
+            </div>
+
+            {/* Code Generator Studio */}
+            <div className="p-6 sm:p-8 rounded-3xl bg-neutral-900 border border-neutral-800 shadow-xl space-y-6">
+              <div className="flex items-center gap-3 pb-4 border-b border-neutral-800">
+                <div className="p-2.5 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-500">
+                  <KeyRound className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-white">4-Tier Subscription Code Generator</h3>
+                  <p className="text-xs text-neutral-400">
+                    Generate valid single or batch subscription activation codes for 1 Month, Permanent, 6 Months, or 1 Year
+                  </p>
+                </div>
+              </div>
+
+              <form onSubmit={handleGenerateCodes} className="space-y-6">
+                {/* 4 Tiers Selection */}
+                <div>
+                  <label className="block text-xs font-bold text-neutral-300 uppercase tracking-wider mb-3">
+                    Step 1: Select Subscription Tier <span className="text-red-500">*</span>
+                  </label>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                    
+                    {/* Tier 1: 1 Month */}
+                    <button
+                      type="button"
+                      onClick={() => setGenTier('one_month')}
+                      className={`p-4 rounded-2xl border text-left transition-all ${
+                        genTier === 'one_month'
+                          ? 'bg-emerald-500/15 border-emerald-500 text-white shadow-lg shadow-emerald-500/20 ring-1 ring-emerald-500'
+                          : 'bg-neutral-950 border-neutral-800 text-neutral-400 hover:border-neutral-700 hover:bg-neutral-900'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-xs font-bold text-emerald-400">1st Tier</span>
+                        <CheckCircle2 className={`w-4 h-4 ${genTier === 'one_month' ? 'text-emerald-400' : 'text-neutral-700'}`} />
+                      </div>
+                      <div className="text-sm font-bold text-white">1 Month Pass</div>
+                      <div className="text-[11px] text-neutral-400 mt-1">30 Days HD Streaming Access</div>
+                    </button>
+
+                    {/* Tier 2: Permanent */}
+                    <button
+                      type="button"
+                      onClick={() => setGenTier('permanent')}
+                      className={`p-4 rounded-2xl border text-left transition-all ${
+                        genTier === 'permanent'
+                          ? 'bg-amber-500/15 border-amber-500 text-white shadow-lg shadow-amber-500/20 ring-1 ring-amber-500'
+                          : 'bg-neutral-950 border-neutral-800 text-neutral-400 hover:border-neutral-700 hover:bg-neutral-900'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-xs font-bold text-amber-400 flex items-center gap-1">
+                          <Crown className="w-3.5 h-3.5 fill-amber-400" />
+                          2nd Tier
+                        </span>
+                        <CheckCircle2 className={`w-4 h-4 ${genTier === 'permanent' ? 'text-amber-400' : 'text-neutral-700'}`} />
+                      </div>
+                      <div className="text-sm font-bold text-amber-300">Permanent VIP</div>
+                      <div className="text-[11px] text-neutral-400 mt-1">Lifetime Access (Never Expires)</div>
+                    </button>
+
+                    {/* Tier 3: 6 Months */}
+                    <button
+                      type="button"
+                      onClick={() => setGenTier('six_months')}
+                      className={`p-4 rounded-2xl border text-left transition-all ${
+                        genTier === 'six_months'
+                          ? 'bg-blue-500/15 border-blue-500 text-white shadow-lg shadow-blue-500/20 ring-1 ring-blue-500'
+                          : 'bg-neutral-950 border-neutral-800 text-neutral-400 hover:border-neutral-700 hover:bg-neutral-900'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-xs font-bold text-blue-400">3rd Tier</span>
+                        <CheckCircle2 className={`w-4 h-4 ${genTier === 'six_months' ? 'text-blue-400' : 'text-neutral-700'}`} />
+                      </div>
+                      <div className="text-sm font-bold text-white">6 Months Pass</div>
+                      <div className="text-[11px] text-neutral-400 mt-1">180 Days HD Streaming Access</div>
+                    </button>
+
+                    {/* Tier 4: 1 Year */}
+                    <button
+                      type="button"
+                      onClick={() => setGenTier('one_year')}
+                      className={`p-4 rounded-2xl border text-left transition-all ${
+                        genTier === 'one_year'
+                          ? 'bg-purple-500/15 border-purple-500 text-white shadow-lg shadow-purple-500/20 ring-1 ring-purple-500'
+                          : 'bg-neutral-950 border-neutral-800 text-neutral-400 hover:border-neutral-700 hover:bg-neutral-900'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-xs font-bold text-purple-400">4th Tier</span>
+                        <CheckCircle2 className={`w-4 h-4 ${genTier === 'one_year' ? 'text-purple-400' : 'text-neutral-700'}`} />
+                      </div>
+                      <div className="text-sm font-bold text-white">1 Year Pass</div>
+                      <div className="text-[11px] text-neutral-400 mt-1">365 Days HD Streaming Access</div>
+                    </button>
+
+                  </div>
+                </div>
+
+                {/* Generator Options */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {/* Batch Quantity */}
+                  <div>
+                    <label className="block text-xs font-bold text-neutral-300 mb-1.5">
+                      Batch Quantity
+                    </label>
+                    <div className="grid grid-cols-4 gap-2">
+                      {[1, 5, 10, 20].map((qty) => (
+                        <button
+                          key={qty}
+                          type="button"
+                          onClick={() => setGenBatchCount(qty)}
+                          className={`py-2 rounded-xl text-xs font-bold border transition-all ${
+                            genBatchCount === qty
+                              ? 'bg-red-600 border-red-500 text-white shadow-md shadow-red-600/30'
+                              : 'bg-neutral-950 border-neutral-800 text-neutral-400 hover:text-white'
+                          }`}
+                        >
+                          {qty} {qty === 1 ? 'Code' : 'Codes'}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Custom Code String (Only for single code) */}
+                  <div>
+                    <label className="block text-xs font-bold text-neutral-300 mb-1.5">
+                      Custom Code (Optional)
+                    </label>
+                    <input
+                      type="text"
+                      placeholder={genBatchCount > 1 ? 'Auto-generated for batches' : 'e.g. UNIKA-VIP-2026'}
+                      value={genCustomCode}
+                      onChange={(e) => setGenCustomCode(e.target.value.toUpperCase())}
+                      disabled={genBatchCount > 1}
+                      className="w-full px-4 py-2 bg-neutral-950 border border-neutral-800 focus:border-red-500 rounded-xl text-xs text-white placeholder:text-neutral-600 uppercase font-mono disabled:opacity-50"
+                    />
+                    <p className="text-[10px] text-neutral-500 mt-1">
+                      Leave empty to auto-generate formatted code.
+                    </p>
+                  </div>
+
+                  {/* Tag / Note */}
+                  <div>
+                    <label className="block text-xs font-bold text-neutral-300 mb-1.5">
+                      Admin Tag / Note (Optional)
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Unika Shop Batch #1, Discord Giveaway"
+                      value={genNote}
+                      onChange={(e) => setGenNote(e.target.value)}
+                      className="w-full px-4 py-2 bg-neutral-950 border border-neutral-800 focus:border-red-500 rounded-xl text-xs text-white placeholder:text-neutral-600"
+                    />
+                  </div>
+                </div>
+
+                <div className="pt-2 flex items-center justify-between">
+                  <button
+                    type="submit"
+                    className="flex items-center gap-2 px-6 py-3 rounded-2xl bg-red-600 hover:bg-red-500 text-white text-xs font-bold shadow-xl shadow-red-600/30 transition-all"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>Generate {genBatchCount} {getTierDisplayName(genTier)} {genBatchCount === 1 ? 'Code' : 'Codes'}</span>
+                  </button>
+
+                  <span className="text-xs text-neutral-400 hidden sm:inline">
+                    Generated codes are saved to Firebase and ready for immediate redemption.
+                  </span>
+                </div>
+              </form>
+
+              {/* Newly Generated Results Panel */}
+              {generatedCodesResult && generatedCodesResult.length > 0 && (
+                <div className="p-4.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 space-y-3 animate-fadeIn">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-xs font-bold text-emerald-400">
+                      <CheckCircle2 className="w-4 h-4" />
+                      <span>Successfully Generated {generatedCodesResult.length} Subscription Codes!</span>
+                    </div>
+
+                    <button
+                      onClick={handleCopyAllGenerated}
+                      className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 text-xs font-bold border border-emerald-500/40 transition-all"
+                    >
+                      {copiedCode === 'all' ? <Check className="w-3.5 h-3.5 text-white" /> : <Copy className="w-3.5 h-3.5" />}
+                      <span>{copiedCode === 'all' ? 'Copied All!' : 'Copy All Codes'}</span>
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 pt-1 max-h-48 overflow-y-auto">
+                    {generatedCodesResult.map((c) => (
+                      <div
+                        key={c.id}
+                        className="p-2.5 rounded-xl bg-neutral-950 border border-neutral-800 flex items-center justify-between gap-2"
+                      >
+                        <div className="min-w-0">
+                          <div className="font-mono font-bold text-xs text-white truncate">{c.code}</div>
+                          <div className="text-[10px] text-neutral-400">{getTierDisplayName(c.tier)}</div>
+                        </div>
+                        <button
+                          onClick={() => handleCopyCode(c.code, c.id)}
+                          className="p-1.5 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-neutral-300 hover:text-white"
+                          title="Copy Code"
+                        >
+                          {copiedCode === c.id ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Subscription Codes Management Table */}
+            <div className="space-y-4">
+              <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                <div>
+                  <h3 className="text-base font-bold text-white flex items-center gap-2">
+                    <span>Subscription Codes Database ({subscriptionCodes.length})</span>
+                  </h3>
+                  <p className="text-xs text-neutral-400">Search, filter, copy, and manage subscription codes</p>
+                </div>
+
+                {/* Filters */}
+                <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
+                  {/* Search */}
+                  <div className="relative flex-1 sm:w-60">
+                    <Search className="w-3.5 h-3.5 text-neutral-500 absolute left-3 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      placeholder="Search code, user, tag..."
+                      value={subCodeSearch}
+                      onChange={(e) => setSubCodeSearch(e.target.value)}
+                      className="w-full pl-8 pr-3 py-1.5 bg-neutral-900 border border-neutral-800 rounded-xl text-xs text-white placeholder:text-neutral-500 focus:outline-none focus:border-red-500"
+                    />
+                  </div>
+
+                  {/* Tier Filter */}
+                  <select
+                    value={subCodeTierFilter}
+                    onChange={(e) => setSubCodeTierFilter(e.target.value as any)}
+                    className="px-3 py-1.5 bg-neutral-900 border border-neutral-800 rounded-xl text-xs text-neutral-300 focus:outline-none focus:border-red-500"
+                  >
+                    <option value="all">All Tiers</option>
+                    <option value="one_month">1 Month</option>
+                    <option value="permanent">Permanent VIP</option>
+                    <option value="six_months">6 Months</option>
+                    <option value="one_year">1 Year</option>
+                  </select>
+
+                  {/* Status Filter */}
+                  <select
+                    value={subCodeStatusFilter}
+                    onChange={(e) => setSubCodeStatusFilter(e.target.value as any)}
+                    className="px-3 py-1.5 bg-neutral-900 border border-neutral-800 rounded-xl text-xs text-neutral-300 focus:outline-none focus:border-red-500"
+                  >
+                    <option value="all">All Status</option>
+                    <option value="available">Available (Unused)</option>
+                    <option value="redeemed">Redeemed</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Codes Table */}
+              <div className="bg-neutral-900/90 border border-neutral-800 rounded-3xl overflow-hidden shadow-2xl">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs sm:text-sm">
+                    <thead className="bg-neutral-950/80 border-b border-neutral-800 text-[11px] font-bold text-neutral-400 uppercase tracking-wider">
+                      <tr>
+                        <th className="py-3.5 px-4">Subscription Code</th>
+                        <th className="py-3.5 px-4">Tier &amp; Duration</th>
+                        <th className="py-3.5 px-4">Status</th>
+                        <th className="py-3.5 px-4">Redeemed By</th>
+                        <th className="py-3.5 px-4">Note / Tag</th>
+                        <th className="py-3.5 px-4">Created Date</th>
+                        <th className="py-3.5 px-4 text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-neutral-800/60">
+                      {filteredSubscriptionCodes.map((c) => (
+                        <tr key={c.id} className="hover:bg-neutral-800/40 transition-colors">
+                          <td className="py-3 px-4">
+                            <div className="flex items-center gap-2">
+                              <span className="font-mono font-bold text-white text-xs sm:text-sm">{c.code}</span>
+                              <button
+                                onClick={() => handleCopyCode(c.code, c.id)}
+                                className="p-1 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-neutral-400 hover:text-white"
+                                title="Copy Code"
+                              >
+                                {copiedCode === c.id ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                              </button>
+                            </div>
+                          </td>
+
+                          <td className="py-3 px-4">
+                            <div className="flex flex-col gap-0.5">
+                              {getTierBadge(c.tier)}
+                              <span className="text-[10px] text-neutral-400">
+                                {c.tier === 'permanent' ? 'Permanent' : `${c.durationDays} Days`}
+                              </span>
+                            </div>
+                          </td>
+
+                          <td className="py-3 px-4">
+                            {c.isRedeemed ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-purple-500/10 border border-purple-500/30 text-purple-400 text-[10px] font-bold">
+                                <CheckCheck className="w-3 h-3" />
+                                Redeemed
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-[10px] font-bold">
+                                <CheckCircle2 className="w-3 h-3" />
+                                Available
+                              </span>
+                            )}
+                          </td>
+
+                          <td className="py-3 px-4">
+                            {c.redeemedBy ? (
+                              <div>
+                                <div className="font-bold text-white text-xs">{c.redeemedBy.userName}</div>
+                                <div className="text-[10px] text-neutral-400">{c.redeemedBy.userEmail}</div>
+                                <div className="text-[9px] text-neutral-500">
+                                  {new Date(c.redeemedBy.redeemedAt).toLocaleDateString()}
+                                </div>
+                              </div>
+                            ) : (
+                              <span className="text-neutral-500 text-xs">—</span>
+                            )}
+                          </td>
+
+                          <td className="py-3 px-4 text-xs text-neutral-300">
+                            {c.note ? (
+                              <span className="px-2 py-0.5 rounded-lg bg-neutral-950 border border-neutral-800 text-[11px]">
+                                {c.note}
+                              </span>
+                            ) : (
+                              <span className="text-neutral-600">—</span>
+                            )}
+                          </td>
+
+                          <td className="py-3 px-4 text-xs text-neutral-400">
+                            {new Date(c.createdAt).toLocaleDateString()}
+                          </td>
+
+                          <td className="py-3 px-4 text-right">
+                            <button
+                              onClick={() => setConfirmDeleteCode({ id: c.id, code: c.code })}
+                              disabled={deletingCodeId === c.id}
+                              className="p-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 transition-colors"
+                              title="Delete/Revoke Code"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+
+                      {filteredSubscriptionCodes.length === 0 && (
+                        <tr>
+                          <td colSpan={7} className="py-8 text-center text-xs text-neutral-400">
+                            No subscription codes found matching the current filters.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        )}
+
+        {/* ===================== TAB 5: LIVE SUPPORT CHAT OPTION ===================== */}
         {activeTab === 'support' && (
           <div className="space-y-4 animate-fadeIn">
             <div>
@@ -986,15 +1847,49 @@ export const AdminPanel: React.FC = () => {
                   <p className="text-xs text-neutral-400">@{inspectingUser.username} • ID: {inspectingUser.id}</p>
                 </div>
               </div>
-              <button
-                onClick={() => setInspectingUser(null)}
-                className="p-2 rounded-full bg-neutral-800 hover:bg-neutral-700 text-neutral-400 hover:text-white"
-              >
-                ✕
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => handleOpenEditUser(inspectingUser)}
+                  className="px-3 py-1.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 text-xs font-bold flex items-center gap-1.5 transition-colors"
+                >
+                  <Edit3 className="w-3.5 h-3.5" />
+                  <span>Edit Info</span>
+                </button>
+                <button
+                  onClick={() => setInspectingUser(null)}
+                  className="p-2 rounded-full bg-neutral-800 hover:bg-neutral-700 text-neutral-400 hover:text-white"
+                >
+                  ✕
+                </button>
+              </div>
             </div>
 
             <div className="grid grid-cols-2 gap-3 text-xs">
+              <div className="p-3 rounded-2xl bg-neutral-950 border border-neutral-800 col-span-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-neutral-400 font-semibold">User ID (System ID)</span>
+                  <span className="text-[10px] font-mono text-neutral-500">Unique Identifier</span>
+                </div>
+                <div className="text-white font-mono text-xs font-bold mt-1 select-all truncate">{inspectingUser.id}</div>
+              </div>
+
+              <div className="p-3 rounded-2xl bg-neutral-950 border border-neutral-800 col-span-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-neutral-400 font-semibold">Account Password</span>
+                  <button
+                    type="button"
+                    onClick={() => setShowInspectPass(!showInspectPass)}
+                    className="text-[11px] text-amber-400 hover:text-amber-300 font-semibold flex items-center gap-1 cursor-pointer"
+                  >
+                    {showInspectPass ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                    <span>{showInspectPass ? 'Hide Password' : 'Reveal Password'}</span>
+                  </button>
+                </div>
+                <div className="text-white font-mono text-xs font-bold mt-1 tracking-wider">
+                  {showInspectPass ? (inspectingUser.password || 'password123 (Default)') : '••••••••••••'}
+                </div>
+              </div>
+
               <div className="p-3 rounded-2xl bg-neutral-950 border border-neutral-800">
                 <div className="text-neutral-400 font-semibold">Email</div>
                 <div className="text-white font-bold mt-1 truncate">{inspectingUser.email}</div>
@@ -1021,6 +1916,82 @@ export const AdminPanel: React.FC = () => {
               </div>
             </div>
 
+            {/* Subscription Status & Admin Direct Override */}
+            <div className="p-4 rounded-2xl bg-neutral-950 border border-neutral-800 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-neutral-300 uppercase tracking-wider flex items-center gap-1.5">
+                  <Crown className="w-3.5 h-3.5 text-amber-400" />
+                  <span>VIP Subscription Status</span>
+                </span>
+                {checkUserHasActiveSubscription(inspectingUser) && inspectingUser.subscription ? (
+                  getTierBadge(inspectingUser.subscription.tier)
+                ) : (
+                  <span className="px-2 py-0.5 rounded-full bg-neutral-800 text-neutral-400 text-[10px] font-semibold">
+                    Free / No Active Pass
+                  </span>
+                )}
+              </div>
+
+              {inspectingUser.subscription && checkUserHasActiveSubscription(inspectingUser) ? (
+                <div className="text-xs text-neutral-400 space-y-1">
+                  <div>
+                    Pass Tier: <strong className="text-white">{getTierDisplayName(inspectingUser.subscription.tier)}</strong>
+                  </div>
+                  <div>
+                    Expires: <strong className="text-emerald-400">
+                      {inspectingUser.subscription.isPermanent
+                        ? 'Never (Permanent Lifetime Access)'
+                        : `${new Date(inspectingUser.subscription.expiresAt!).toLocaleDateString()} (${getUserSubscriptionDaysLeft(inspectingUser)} days left)`}
+                    </strong>
+                  </div>
+                  {inspectingUser.subscription.codeUsed && (
+                    <div className="text-[11px] text-neutral-500 font-mono">
+                      Redeemed Code: {inspectingUser.subscription.codeUsed}
+                    </div>
+                  )}
+                </div>
+              ) : null}
+
+              {/* Admin VIP Grant / Revoke Actions */}
+              <div className="pt-2 border-t border-neutral-850 flex flex-wrap items-center gap-1.5">
+                <span className="text-[11px] font-semibold text-neutral-400 w-full mb-1">
+                  Admin Action: Grant / Revoke Pass
+                </span>
+                <button
+                  onClick={() => handleGrantUserSubscription(inspectingUser.id, 'one_month')}
+                  className="px-2.5 py-1 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-300 text-[11px] font-bold"
+                >
+                  +1 Month
+                </button>
+                <button
+                  onClick={() => handleGrantUserSubscription(inspectingUser.id, 'six_months')}
+                  className="px-2.5 py-1 rounded-lg bg-blue-500/15 hover:bg-blue-500/25 border border-blue-500/30 text-blue-300 text-[11px] font-bold"
+                >
+                  +6 Months
+                </button>
+                <button
+                  onClick={() => handleGrantUserSubscription(inspectingUser.id, 'one_year')}
+                  className="px-2.5 py-1 rounded-lg bg-purple-500/15 hover:bg-purple-500/25 border border-purple-500/30 text-purple-300 text-[11px] font-bold"
+                >
+                  +1 Year
+                </button>
+                <button
+                  onClick={() => handleGrantUserSubscription(inspectingUser.id, 'permanent')}
+                  className="px-2.5 py-1 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-300 text-[11px] font-bold"
+                >
+                  +Permanent
+                </button>
+                {inspectingUser.subscription && (
+                  <button
+                    onClick={() => handleRevokeUserSubscription(inspectingUser.id)}
+                    className="px-2.5 py-1 rounded-lg bg-red-500/15 hover:bg-red-500/25 border border-red-500/30 text-red-400 text-[11px] font-bold ml-auto"
+                  >
+                    Revoke Pass
+                  </button>
+                )}
+              </div>
+            </div>
+
             {/* Watched Titles List */}
             <div>
               <h4 className="text-xs font-bold text-neutral-300 uppercase tracking-wider mb-2">
@@ -1043,7 +2014,15 @@ export const AdminPanel: React.FC = () => {
               </div>
             </div>
 
-            <div className="pt-2 flex justify-end gap-2 border-t border-neutral-800">
+            <div className="pt-2 flex items-center justify-between gap-2 border-t border-neutral-800">
+              <button
+                onClick={() => setConfirmDeleteUser({ id: inspectingUser.id, name: inspectingUser.name || inspectingUser.username, email: inspectingUser.email })}
+                className="px-3.5 py-2 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 text-xs font-semibold flex items-center gap-1.5 transition-colors"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Delete Account</span>
+              </button>
+
               <button
                 onClick={() => setInspectingUser(null)}
                 className="px-4 py-2 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-neutral-200 text-xs font-semibold"
@@ -1051,6 +2030,217 @@ export const AdminPanel: React.FC = () => {
                 Close
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* In-App Delete Subscription Code Confirmation Modal */}
+      {confirmDeleteCode && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-neutral-950/80 backdrop-blur-md animate-fadeIn">
+          <div className="relative w-full max-w-md bg-neutral-900 border border-neutral-800 rounded-3xl shadow-2xl p-6 space-y-4">
+            <div className="w-12 h-12 rounded-2xl bg-red-500/10 border border-red-500/30 flex items-center justify-center text-red-500 mx-auto">
+              <Trash2 className="w-6 h-6" />
+            </div>
+
+            <div className="text-center space-y-1.5">
+              <h3 className="text-lg font-black text-white">Delete Subscription Code</h3>
+              <p className="text-xs text-neutral-400">
+                Are you sure you want to permanently delete and revoke this subscription pass code?
+              </p>
+              <div className="p-2.5 rounded-xl bg-neutral-950 border border-neutral-800 font-mono text-sm text-red-400 font-bold tracking-wider break-all mt-2">
+                {confirmDeleteCode.code}
+              </div>
+            </div>
+
+            <div className="flex gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setConfirmDeleteCode(null)}
+                disabled={deletingCodeId !== null}
+                className="flex-1 px-4 py-2.5 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-white text-xs font-bold transition-all"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => executeDeleteCode(confirmDeleteCode.id)}
+                disabled={deletingCodeId !== null}
+                className="flex-1 px-4 py-2.5 rounded-xl bg-red-600 hover:bg-red-500 text-white text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-lg shadow-red-600/30 disabled:opacity-50"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>{deletingCodeId ? 'Deleting...' : 'Confirm Delete'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* In-App Delete User Confirmation Modal */}
+      {confirmDeleteUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-neutral-950/80 backdrop-blur-md animate-fadeIn">
+          <div className="relative w-full max-w-md bg-neutral-900 border border-neutral-800 rounded-3xl shadow-2xl p-6 space-y-4">
+            <div className="w-12 h-12 rounded-2xl bg-red-500/10 border border-red-500/30 flex items-center justify-center text-red-500 mx-auto">
+              <Trash2 className="w-6 h-6" />
+            </div>
+
+            <div className="text-center space-y-1.5">
+              <h3 className="text-lg font-black text-white">Delete User Account</h3>
+              <p className="text-xs text-neutral-400">
+                Are you sure you want to permanently delete this account from Zinovis and Firebase?
+              </p>
+              <div className="p-3 rounded-xl bg-neutral-950 border border-neutral-800 text-xs text-neutral-300 mt-2 text-left space-y-1">
+                <div>User: <strong className="text-white">{confirmDeleteUser.name}</strong></div>
+                <div>Email: <strong className="text-neutral-400">{confirmDeleteUser.email}</strong></div>
+                <div className="text-[11px] text-red-400 font-mono">ID: {confirmDeleteUser.id}</div>
+              </div>
+            </div>
+
+            <div className="flex gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setConfirmDeleteUser(null)}
+                disabled={deletingUserId !== null}
+                className="flex-1 px-4 py-2.5 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-white text-xs font-bold transition-all"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => executeDeleteUser(confirmDeleteUser.id)}
+                disabled={deletingUserId !== null}
+                className="flex-1 px-4 py-2.5 rounded-xl bg-red-600 hover:bg-red-500 text-white text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-lg shadow-red-600/30 disabled:opacity-50"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>{deletingUserId ? 'Deleting...' : 'Delete User'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit User Modal */}
+      {editingUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-neutral-950/85 backdrop-blur-md animate-fadeIn">
+          <div className="relative w-full max-w-md bg-neutral-900 border border-neutral-800 rounded-3xl shadow-2xl p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-3 border-b border-neutral-800">
+              <div className="flex items-center gap-2 text-white font-bold">
+                <UserCog className="w-5 h-5 text-amber-400" />
+                <span>Edit User Profile & Info</span>
+              </div>
+              <button
+                onClick={() => setEditingUser(null)}
+                className="p-2 rounded-full bg-neutral-800 hover:bg-neutral-700 text-neutral-400 hover:text-white"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEditedUser} className="space-y-3.5 text-xs">
+              <div>
+                <label className="block text-neutral-400 font-semibold mb-1">Full Name</label>
+                <input
+                  type="text"
+                  value={editFormName}
+                  onChange={(e) => setEditFormName(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-neutral-950 border border-neutral-800 text-white focus:border-amber-500 focus:outline-none"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-neutral-400 font-semibold mb-1">Username (@)</label>
+                <input
+                  type="text"
+                  value={editFormUsername}
+                  onChange={(e) => setEditFormUsername(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-neutral-950 border border-neutral-800 text-white focus:border-amber-500 focus:outline-none"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-neutral-400 font-semibold mb-1">Email Address</label>
+                <input
+                  type="email"
+                  value={editFormEmail}
+                  onChange={(e) => setEditFormEmail(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-neutral-950 border border-neutral-800 text-white focus:border-amber-500 focus:outline-none"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-neutral-400 font-semibold mb-1">Account Password</label>
+                <input
+                  type="text"
+                  value={editFormPassword}
+                  onChange={(e) => setEditFormPassword(e.target.value)}
+                  placeholder="Enter new password"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-neutral-950 border border-neutral-800 text-white font-mono focus:border-amber-500 focus:outline-none"
+                  required
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-neutral-400 font-semibold mb-1">Age</label>
+                  <input
+                    type="number"
+                    value={editFormAge}
+                    onChange={(e) => setEditFormAge(e.target.value === '' ? '' : Number(e.target.value))}
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-neutral-950 border border-neutral-800 text-white focus:border-amber-500 focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-neutral-400 font-semibold mb-1">Country</label>
+                  <input
+                    type="text"
+                    value={editFormCountry}
+                    onChange={(e) => setEditFormCountry(e.target.value)}
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-neutral-950 border border-neutral-800 text-white focus:border-amber-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-neutral-400 font-semibold mb-1">Avatar Image URL</label>
+                <input
+                  type="text"
+                  value={editFormAvatar}
+                  onChange={(e) => setEditFormAvatar(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-neutral-950 border border-neutral-800 text-white focus:border-amber-500 focus:outline-none"
+                />
+                <div className="flex gap-2 mt-2 overflow-x-auto pb-1">
+                  {AVATAR_PRESETS.slice(0, 6).map((preset) => (
+                    <button
+                      key={preset.id}
+                      type="button"
+                      onClick={() => setEditFormAvatar(preset.url)}
+                      className={`w-9 h-9 rounded-xl overflow-hidden border-2 flex-shrink-0 transition-all ${editFormAvatar === preset.url ? 'border-amber-400 scale-105' : 'border-neutral-800 opacity-70 hover:opacity-100'}`}
+                    >
+                      <img src={preset.url} alt={preset.name} className="w-full h-full object-cover" />
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="pt-3 flex gap-2 border-t border-neutral-800">
+                <button
+                  type="button"
+                  onClick={() => setEditingUser(null)}
+                  className="flex-1 px-4 py-2.5 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-white font-bold transition-all"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 px-4 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold transition-all flex items-center justify-center gap-1.5 shadow-lg shadow-amber-600/30"
+                >
+                  <Save className="w-4 h-4" />
+                  <span>Save Changes</span>
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

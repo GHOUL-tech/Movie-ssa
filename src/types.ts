@@ -130,6 +130,38 @@ export interface WatchHistoryItem {
   progress_percent?: number;
 }
 
+export type SubscriptionTier = 'one_month' | 'permanent' | 'six_months' | 'one_year';
+
+export interface UserSubscription {
+  tier: SubscriptionTier;
+  startDate: number;
+  expiresAt: number | null; // null for permanent
+  isPermanent: boolean;
+  codeUsed?: string;
+}
+
+export interface SubscriptionCode {
+  id: string;
+  code: string;
+  tier: SubscriptionTier;
+  durationDays: number; // 30, 180, 365, or 0 (permanent)
+  createdAt: number;
+  isRedeemed: boolean;
+  redeemedBy?: {
+    userId: string;
+    userName: string;
+    userEmail: string;
+  };
+  redeemedAt?: number;
+  note?: string;
+}
+
+export interface SystemSettings {
+  subscriptionRequired: boolean;
+  shopUrl: string;
+  updatedAt: number;
+}
+
 export interface User {
   id: string;
   username: string;
@@ -141,6 +173,7 @@ export interface User {
   country?: string;
   isUnder18?: boolean;
   joinedAt: number;
+  subscription?: UserSubscription;
   watchHistory: WatchHistoryItem[];
   watchLater: WatchlistItem[];
 }

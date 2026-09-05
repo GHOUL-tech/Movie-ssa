@@ -13,7 +13,7 @@ import {
   Firestore
 } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
-import { User, WatchHistoryItem, WatchlistItem, SupportMessage } from '../types';
+import { User, WatchHistoryItem, WatchlistItem, SupportMessage, SystemSettings, SubscriptionCode, SubscriptionTier } from '../types';
 
 // Initialize Firebase App
 export const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
@@ -36,6 +36,28 @@ export const db = firestoreDb;
 const USERS_COLLECTION = 'users';
 
 /**
+ * Helper to recursively remove undefined values from objects before writing to Firestore
+ */
+export function cleanForFirestore<T>(obj: T): T {
+  if (obj === null || obj === undefined) {
+    return null as any;
+  }
+  if (Array.isArray(obj)) {
+    return obj.map(item => cleanForFirestore(item)) as any;
+  }
+  if (typeof obj === 'object' && !(obj instanceof Date)) {
+    const cleaned: Record<string, any> = {};
+    for (const [key, value] of Object.entries(obj)) {
+      if (value !== undefined) {
+        cleaned[key] = cleanForFirestore(value);
+      }
+    }
+    return cleaned as T;
+  }
+  return obj;
+}
+
+/**
  * Save or update complete user profile in Firebase Firestore
  */
 export const saveUserToFirebase = async (user: User): Promise<void> => {
@@ -52,14 +74,15 @@ export const saveUserToFirebase = async (user: User): Promise<void> => {
       isUnder18: user.isUnder18 ?? (user.age !== undefined ? user.age < 18 : false),
       joinedAt: user.joinedAt || Date.now(),
       createdAt: user.joinedAt || Date.now(),
-      watchLater: user.watchLater || [],
-      watchHistory: user.watchHistory || [],
+      subscription: user.subscription ? cleanForFirestore(user.subscription) : null,
+      watchLater: user.watchLater ? cleanForFirestore(user.watchLater) : [],
+      watchHistory: user.watchHistory ? cleanForFirestore(user.watchHistory) : [],
       updatedAt: Date.now(),
     };
     if (user.password) {
       cleanUser.password = user.password;
     }
-    await setDoc(userRef, cleanUser, { merge: true });
+    await setDoc(userRef, cleanForFirestore(cleanUser), { merge: true });
   } catch (error) {
     console.error('Error saving user to Firebase:', error);
   }
@@ -201,7 +224,7 @@ export const sendSupportMessageToFirebase = async (msg: Omit<SupportMessage, 'id
       ...msg,
       id: messageId,
     };
-    await setDoc(msgRef, data);
+    await setDoc(msgRef, cleanForFirestore(data));
     return messageId;
   } catch (err) {
     console.error('Failed to send support message:', err);
@@ -277,3 +300,258 @@ export const markSupportMessageRead = async (messageId: string): Promise<void> =
     console.error('Error marking support message read:', err);
   }
 };
+
+const SYSTEM_CONFIG_COLLECTION = 'system_config';
+const SETTINGS_DOC_ID = 'settings';
+const DEFAULT_SHOP_URL = 'https://unikagamingshopnew.vercel.app/';
+
+/**
+ * Fetch system settings from Firebase
+ */
+export const getSystemSettingsFromFirebase = async (): Promise<SystemSettings> => {
+  try {
+    const docRef = doc(db, SYSTEM_CONFIG_COLLECTION, SETTINGS_DOC_ID);
+    const snap = await getDoc(docRef);
+    if (snap.exists()) {
+      return snap.data() as SystemSettings;
+    }
+  } catch (err) {
+    console.warn('Failed to load system settings from Firebase:', err);
+  }
+  return {
+    subscriptionRequired: false,
+    shopUrl: DEFAULT_SHOP_URL,
+    updatedAt: Date.now(),
+  };
+};
+
+/**
+ * Save system settings to Firebase
+ */
+export const saveSystemSettingsToFirebase = async (settings: Partial<SystemSettings>): Promise<void> => {
+  try {
+    const docRef = doc(db, SYSTEM_CONFIG_COLLECTION, SETTINGS_DOC_ID);
+    const cleanData = cleanForFirestore({
+      ...settings,
+      updatedAt: Date.now(),
+    });
+    await setDoc(docRef, cleanData, { merge: true });
+  } catch (err) {
+    console.error('Failed to save system settings to Firebase:', err);
+  }
+};
+
+/**
+ * Subscribe to real-time system settings updates
+ */
+export const subscribeToSystemSettings = (callback: (settings: SystemSettings) => void): (() => void) => {
+  try {
+    const docRef = doc(db, SYSTEM_CONFIG_COLLECTION, SETTINGS_DOC_ID);
+    return onSnapshot(
+      docRef,
+      (docSnap) => {
+        if (docSnap.exists()) {
+          callback(docSnap.data() as SystemSettings);
+        } else {
+          callback({
+            subscriptionRequired: false,
+            shopUrl: DEFAULT_SHOP_URL,
+            updatedAt: Date.now(),
+          });
+        }
+      },
+      (err) => {
+        console.warn('System settings listener error:', err);
+      }
+    );
+  } catch (e) {
+    console.warn('System settings listener init error:', e);
+    return () => {};
+  }
+};
+
+const CODES_COLLECTION = 'subscription_codes';
+
+/**
+ * Fetch all subscription codes from Firebase
+ */
+export const getAllSubscriptionCodesFromFirebase = async (): Promise<SubscriptionCode[]> => {
+  try {
+    const codesRef = collection(db, CODES_COLLECTION);
+    const snap = await getDocs(codesRef);
+    const codes: SubscriptionCode[] = [];
+    snap.forEach((d) => {
+      codes.push(d.data() as SubscriptionCode);
+    });
+    return codes.sort((a, b) => b.createdAt - a.createdAt);
+  } catch (err) {
+    console.error('Failed to load subscription codes from Firebase:', err);
+    return [];
+  }
+};
+
+/**
+ * Save / Create a new subscription code in Firebase
+ */
+export const saveSubscriptionCodeToFirebase = async (code: SubscriptionCode): Promise<void> => {
+  try {
+    const codeRef = doc(db, CODES_COLLECTION, code.id);
+    const cleanData = cleanForFirestore({
+      id: code.id,
+      code: code.code,
+      tier: code.tier,
+      durationDays: code.durationDays,
+      createdAt: code.createdAt || Date.now(),
+      isRedeemed: Boolean(code.isRedeemed),
+      note: code.note || null,
+      redeemedAt: code.redeemedAt || null,
+      redeemedBy: code.redeemedBy || null,
+    });
+    await setDoc(codeRef, cleanData);
+  } catch (err) {
+    console.error('Failed to save subscription code to Firebase:', err);
+  }
+};
+
+/**
+ * Delete a subscription code from Firebase
+ */
+export const deleteSubscriptionCodeFromFirebase = async (codeId: string): Promise<boolean> => {
+  try {
+    const codeRef = doc(db, CODES_COLLECTION, codeId);
+    await deleteDoc(codeRef);
+    return true;
+  } catch (err) {
+    console.error('Failed to delete subscription code from Firebase:', err);
+    return false;
+  }
+};
+
+/**
+ * Subscribe to real-time subscription codes
+ */
+export const subscribeToSubscriptionCodes = (callback: (codes: SubscriptionCode[]) => void): (() => void) => {
+  try {
+    const codesRef = collection(db, CODES_COLLECTION);
+    return onSnapshot(
+      codesRef,
+      (snap) => {
+        const codes: SubscriptionCode[] = [];
+        snap.forEach((d) => {
+          codes.push(d.data() as SubscriptionCode);
+        });
+        codes.sort((a, b) => b.createdAt - a.createdAt);
+        callback(codes);
+      },
+      (err) => {
+        console.warn('Subscription codes listener error:', err);
+      }
+    );
+  } catch (e) {
+    console.warn('Subscription codes listener init error:', e);
+    return () => {};
+  }
+};
+
+/**
+ * Redeem subscription code in Firebase
+ */
+export const redeemSubscriptionCodeInFirebase = async (
+  codeString: string,
+  user: User
+): Promise<{ success: boolean; message: string; tier?: SubscriptionTier; subscription?: any }> => {
+  const cleanCode = codeString.trim().toUpperCase();
+  if (!cleanCode) {
+    return { success: false, message: 'Please enter a subscription code.' };
+  }
+
+  try {
+    const codesRef = collection(db, CODES_COLLECTION);
+    const q = query(codesRef, where('code', '==', cleanCode));
+    const snap = await getDocs(q);
+
+    if (snap.empty) {
+      return { success: false, message: 'Invalid subscription code. Please check and try again.' };
+    }
+
+    const codeDoc = snap.docs[0];
+    const codeData = codeDoc.data() as SubscriptionCode;
+
+    if (codeData.isRedeemed) {
+      return { 
+        success: false, 
+        message: `This subscription code was already redeemed on ${new Date(codeData.redeemedAt || Date.now()).toLocaleDateString()}.` 
+      };
+    }
+
+    // Calculate duration and expiration
+    const now = Date.now();
+    let expiresAt: number | null = null;
+    let isPermanent = false;
+
+    if (codeData.tier === 'permanent') {
+      isPermanent = true;
+      expiresAt = null;
+    } else if (codeData.tier === 'one_month') {
+      expiresAt = now + 30 * 24 * 60 * 60 * 1000;
+    } else if (codeData.tier === 'six_months') {
+      expiresAt = now + 180 * 24 * 60 * 60 * 1000;
+    } else if (codeData.tier === 'one_year') {
+      expiresAt = now + 365 * 24 * 60 * 60 * 1000;
+    }
+
+    const newSubscription = {
+      tier: codeData.tier,
+      startDate: now,
+      expiresAt,
+      isPermanent,
+      codeUsed: cleanCode,
+    };
+
+    // Update code doc as redeemed
+    await setDoc(doc(db, CODES_COLLECTION, codeData.id), cleanForFirestore({
+      isRedeemed: true,
+      redeemedBy: {
+        userId: user.id,
+        userName: user.name || user.username || 'User',
+        userEmail: user.email || '',
+      },
+      redeemedAt: now,
+    }), { merge: true });
+
+    // Update user doc with new subscription
+    const userRef = doc(db, USERS_COLLECTION, user.id);
+    await setDoc(userRef, cleanForFirestore({
+      subscription: newSubscription,
+      updatedAt: now,
+    }), { merge: true });
+
+    return {
+      success: true,
+      message: isPermanent 
+        ? 'Congratulations! Permanent Lifetime VIP Subscription activated!' 
+        : `Congratulations! ${getTierDisplayName(codeData.tier)} VIP Subscription activated!`,
+      tier: codeData.tier,
+      subscription: newSubscription,
+    };
+  } catch (err: any) {
+    console.error('Error redeeming code in Firebase:', err);
+    return { success: false, message: err.message || 'Failed to redeem subscription code.' };
+  }
+};
+
+export function getTierDisplayName(tier: SubscriptionTier): string {
+  switch (tier) {
+    case 'one_month':
+      return '1 Month';
+    case 'six_months':
+      return '6 Months';
+    case 'one_year':
+      return '1 Year';
+    case 'permanent':
+      return 'Permanent Lifetime';
+    default:
+      return tier;
+  }
+}
+

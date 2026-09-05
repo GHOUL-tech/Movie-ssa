@@ -16,11 +16,24 @@ import {
   Maximize2,
   ExternalLink,
   Play,
-  Tv2
+  Tv2,
+  Lock,
+  Crown,
+  Tag,
+  Zap,
+  Gift,
+  AlertCircle,
+  CheckCircle2
 } from 'lucide-react';
 import { MediaType, MediaDetail } from '../types';
 import { getMediaDetail, getSeasonDetail, getImageUrl } from '../services/tmdb';
-import { saveContinueWatching, addToWatchHistory, getPreferredServer, setPreferredServer } from '../utils/storage';
+import { 
+  saveContinueWatching, 
+  addToWatchHistory, 
+  getPreferredServer, 
+  setPreferredServer,
+  checkUserHasActiveSubscription 
+} from '../utils/storage';
 import { useAuth } from '../context/AuthContext';
 import { SERVERS } from './Navbar';
 import { Footer } from './Footer';
@@ -42,7 +55,15 @@ export const HDPlayerModal: React.FC<HDPlayerModalProps> = ({
   onClose,
   onPlayMedia,
 }) => {
-  const { refreshUserData } = useAuth();
+  const { 
+    currentUser, 
+    isLoggedIn, 
+    isSubscriptionRequired, 
+    shopUrl, 
+    redeemSubscriptionCode, 
+    openAuthModal, 
+    refreshUserData 
+  } = useAuth();
   const [detail, setDetail] = useState<MediaDetail | null>(null);
   const [season, setSeason] = useState<number>(initialSeason);
   const [episode, setEpisode] = useState<number>(initialEpisode);
@@ -51,6 +72,14 @@ export const HDPlayerModal: React.FC<HDPlayerModalProps> = ({
   const [showEpisodeDrawer, setShowEpisodeDrawer] = useState(false);
   const [episodesList, setEpisodesList] = useState<any[]>([]);
   const [loadingEpisodes, setLoadingEpisodes] = useState(false);
+
+  // Quick In-Player Code Redemption State
+  const [inPlayerCode, setInPlayerCode] = useState('');
+  const [isRedeeming, setIsRedeeming] = useState(false);
+  const [redeemError, setRedeemError] = useState('');
+  const [redeemSuccess, setRedeemSuccess] = useState('');
+
+  const hasAccess = !isSubscriptionRequired || checkUserHasActiveSubscription(currentUser);
 
   // Reset season and episode when mediaId changes
   useEffect(() => {
@@ -165,6 +194,37 @@ export const HDPlayerModal: React.FC<HDPlayerModalProps> = ({
   const currentEmbedUrl = getEmbedUrl(selectedServer);
   const title = detail?.title || detail?.name || 'Zinovis Player';
 
+  const handleQuickRedeem = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setRedeemError('');
+    setRedeemSuccess('');
+
+    if (!isLoggedIn) {
+      openAuthModal('login');
+      return;
+    }
+
+    if (!inPlayerCode.trim()) {
+      setRedeemError('Please enter a valid subscription code.');
+      return;
+    }
+
+    setIsRedeeming(true);
+    try {
+      const res = await redeemSubscriptionCode(inPlayerCode.trim());
+      if (res.success) {
+        setRedeemSuccess('VIP Subscription Activated! Enjoy streaming.');
+        setInPlayerCode('');
+      } else {
+        setRedeemError(res.message);
+      }
+    } catch (err: any) {
+      setRedeemError(err?.message || 'Failed to redeem code.');
+    } finally {
+      setIsRedeeming(false);
+    }
+  };
+
   return (
     <div className={`fixed inset-0 z-50 flex flex-col transition-all duration-500 overflow-y-auto overflow-x-hidden w-full max-w-full ${
       cinemaMode ? 'bg-black' : 'bg-neutral-950/95 backdrop-blur-md'
@@ -217,19 +277,21 @@ export const HDPlayerModal: React.FC<HDPlayerModalProps> = ({
           </div>
 
           {/* Open Unrestricted Stream Popout Button */}
-          <a
-            href={currentEmbedUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="px-3 py-1.5 rounded-xl bg-neutral-900 border border-neutral-700 hover:bg-neutral-800 text-neutral-200 hover:text-white text-xs font-bold flex items-center gap-1.5 transition-all"
-            title="Open Player in Unrestricted New Tab (Bypasses Iframe Sandbox Blockers)"
-          >
-            <ExternalLink className="w-3.5 h-3.5 text-blue-400" />
-            <span className="hidden sm:inline">Popout Player</span>
-          </a>
+          {hasAccess && (
+            <a
+              href={currentEmbedUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-3 py-1.5 rounded-xl bg-neutral-900 border border-neutral-700 hover:bg-neutral-800 text-neutral-200 hover:text-white text-xs font-bold flex items-center gap-1.5 transition-all"
+              title="Open Player in Unrestricted New Tab (Bypasses Iframe Sandbox Blockers)"
+            >
+              <ExternalLink className="w-3.5 h-3.5 text-blue-400" />
+              <span className="hidden sm:inline">Popout Player</span>
+            </a>
+          )}
 
           {/* Episode Drawer Trigger for TV Shows */}
-          {mediaType === 'tv' && (
+          {mediaType === 'tv' && hasAccess && (
             <button
               onClick={() => setShowEpisodeDrawer(!showEpisodeDrawer)}
               className={`px-3 py-1.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 transition-all ${
@@ -271,34 +333,141 @@ export const HDPlayerModal: React.FC<HDPlayerModalProps> = ({
       {/* Main Content Area */}
       <div className="flex-1 relative flex flex-col lg:flex-row items-center justify-center p-2 sm:p-4 md:p-6 lg:p-8 max-w-full 2xl:max-w-[2560px] mx-auto w-full gap-4 md:gap-6">
         
-        {/* Render Web HTML5 Player Frame */}
+        {/* Render Web HTML5 Player Frame or Subscription Paywall */}
         <div className="flex-1 flex flex-col w-full h-full space-y-2 md:space-y-4">
           <div className="flex items-center justify-between px-3 py-2 md:px-4 md:py-3 bg-neutral-900/90 rounded-2xl border border-neutral-800 text-xs md:text-sm text-neutral-300 flex-wrap gap-2">
             <div className="flex items-center gap-2 min-w-0">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse flex-shrink-0" />
               <span className="truncate">Active Server: <strong className="text-white">{SERVERS.find(s => s.id === selectedServer)?.name}</strong></span>
             </div>
+            {hasAccess && (
+              <span className="text-[11px] text-emerald-400 font-bold bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/30">
+                Streaming Ready
+              </span>
+            )}
           </div>
 
-          <div className="relative w-full aspect-video bg-black rounded-3xl overflow-hidden border border-neutral-800/80 shadow-2xl shadow-black/90 flex-1 min-h-[300px] md:min-h-[500px] lg:min-h-[600px] 2xl:min-h-[800px]">
-            <iframe
-              src={getEmbedUrl()}
-              title={title}
-              width="100%"
-              height="100%"
-              frameBorder="0"
-              scrolling="no"
-              allowFullScreen
-              allow="autoplay; encrypted-media; picture-in-picture; accelerometer; gyroscope; clipboard-write; screen-wake-lock"
-              referrerPolicy="no-referrer"
-              className="w-full h-full border-0"
-              onError={() => {
-                // Auto-fallback on network error
-                const currentIndex = SERVERS.findIndex(s => s.id === selectedServer);
-                const nextIndex = (currentIndex + 1) % SERVERS.length;
-                handleServerChange(SERVERS[nextIndex].id);
-              }}
-            />
+          <div className="relative w-full aspect-video bg-black rounded-3xl overflow-hidden border border-neutral-800/80 shadow-2xl shadow-black/90 flex-1 min-h-[300px] md:min-h-[500px] lg:min-h-[600px] 2xl:min-h-[800px] flex items-center justify-center">
+            {hasAccess ? (
+              <iframe
+                src={getEmbedUrl()}
+                title={title}
+                width="100%"
+                height="100%"
+                frameBorder="0"
+                scrolling="no"
+                allowFullScreen
+                allow="autoplay; encrypted-media; picture-in-picture; accelerometer; gyroscope; clipboard-write; screen-wake-lock"
+                referrerPolicy="no-referrer"
+                className="w-full h-full border-0"
+                onError={() => {
+                  // Auto-fallback on network error
+                  const currentIndex = SERVERS.findIndex(s => s.id === selectedServer);
+                  const nextIndex = (currentIndex + 1) % SERVERS.length;
+                  handleServerChange(SERVERS[nextIndex].id);
+                }}
+              />
+            ) : (
+              /* VIP Subscription Paywall Gate */
+              <div className="w-full h-full p-6 sm:p-10 flex flex-col items-center justify-center text-center bg-gradient-to-b from-neutral-950 via-neutral-900 to-black z-20 space-y-6 max-w-2xl mx-auto">
+                <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-3xl bg-red-500/10 border-2 border-red-500/30 flex items-center justify-center text-red-500 shadow-2xl shadow-red-500/20">
+                  <Lock className="w-8 h-8 sm:w-10 sm:h-10 text-red-500" />
+                </div>
+
+                <div className="space-y-2">
+                  <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs font-black uppercase tracking-wider">
+                    <Crown className="w-3.5 h-3.5 fill-amber-400" />
+                    Subscription Required
+                  </div>
+                  <h3 className="text-xl sm:text-2xl md:text-3xl font-black text-white">
+                    Unlock Full HD Streaming Pass
+                  </h3>
+                  <p className="text-xs sm:text-sm text-neutral-400 max-w-lg mx-auto">
+                    Access to streaming on Zinovis currently requires an active VIP Subscription pass code.
+                  </p>
+                </div>
+
+                {/* Purchase Shop Link */}
+                <div className="w-full p-4 rounded-2xl bg-neutral-950/80 border border-neutral-800 flex flex-col sm:flex-row items-center justify-between gap-3 text-left">
+                  <div className="space-y-0.5">
+                    <div className="text-xs font-bold text-white flex items-center gap-1.5">
+                      <Tag className="w-3.5 h-3.5 text-red-400" />
+                      <span>Need a Subscription Code?</span>
+                    </div>
+                    <p className="text-[11px] text-neutral-400">
+                      You can buy subscription code from our official shop:
+                    </p>
+                    <div className="text-[11px] font-mono text-red-400 font-bold break-all">
+                      {shopUrl}
+                    </div>
+                  </div>
+
+                  <a
+                    href={shopUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-red-600 hover:bg-red-500 text-white text-xs font-bold flex items-center justify-center gap-1.5 transition-all shadow-lg shadow-red-600/30 flex-shrink-0"
+                  >
+                    <Gift className="w-4 h-4" />
+                    <span>Buy Subscription Code</span>
+                    <ExternalLink className="w-3 h-3" />
+                  </a>
+                </div>
+
+                {/* Quick In-Player Redeem Form */}
+                {isLoggedIn ? (
+                  <form onSubmit={handleQuickRedeem} className="w-full space-y-3">
+                    <div className="flex flex-col sm:flex-row gap-2">
+                      <input
+                        type="text"
+                        placeholder="Enter subscription code (e.g. ZNV-1M-XXXX-XXXX)"
+                        value={inPlayerCode}
+                        onChange={(e) => setInPlayerCode(e.target.value)}
+                        className="flex-1 px-4 py-3 bg-neutral-950 border border-neutral-800 focus:border-red-500 rounded-2xl text-xs sm:text-sm text-white font-mono uppercase placeholder:text-neutral-600 focus:outline-none focus:ring-1 focus:ring-red-500"
+                      />
+                      <button
+                        type="submit"
+                        disabled={isRedeeming || !inPlayerCode.trim()}
+                        className="px-6 py-3 rounded-2xl bg-gradient-to-r from-red-600 to-amber-600 hover:from-red-500 hover:to-amber-500 text-white text-xs font-bold shadow-lg shadow-red-600/30 transition-all flex items-center justify-center gap-2 disabled:opacity-50 flex-shrink-0"
+                      >
+                        <Zap className="w-4 h-4 fill-current" />
+                        <span>{isRedeeming ? 'Unlocking...' : 'Redeem & Play'}</span>
+                      </button>
+                    </div>
+
+                    {redeemError && (
+                      <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-xs font-semibold flex items-center gap-2 text-left">
+                        <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                        <span>{redeemError}</span>
+                      </div>
+                    )}
+
+                    {redeemSuccess && (
+                      <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-semibold flex items-center gap-2 text-left">
+                        <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
+                        <span>{redeemSuccess}</span>
+                      </div>
+                    )}
+                  </form>
+                ) : (
+                  <div className="w-full flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
+                    <button
+                      onClick={() => openAuthModal('login')}
+                      className="w-full sm:w-auto px-6 py-3 rounded-2xl bg-neutral-800 hover:bg-neutral-700 text-white text-xs font-bold transition-all"
+                    >
+                      Sign In to Redeem Code
+                    </button>
+                    <button
+                      onClick={() => openAuthModal('signup')}
+                      className="w-full sm:w-auto px-6 py-3 rounded-2xl bg-red-600 hover:bg-red-500 text-white text-xs font-bold shadow-lg shadow-red-600/30 transition-all"
+                    >
+                      Create Free Account
+                    </button>
+                  </div>
+                )}
+
+              </div>
+            )}
           </div>
         </div>
 
