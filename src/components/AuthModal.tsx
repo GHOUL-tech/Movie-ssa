@@ -193,14 +193,15 @@ export const AuthModal: React.FC = () => {
 
       setIsOtpSimulated(!!emailResult.isSimulated);
       
+      setForgotStep('otp');
+      setEnteredOtp('');
+      setOtpResendCountdown(45);
+      
       if (emailResult.isSimulated) {
-        // Skip OTP step entirely if simulated since the user has no way to see the code now
-        setForgotStep('new_password');
-        setResetSuccessMessage('Email service not configured. OTP bypassed. Enter your new password below.');
+        setResetSuccessMessage(`[Dev Mode] Verification code generated. Please configure EmailJS to send real emails.`);
+        // Also log to console so the developer can see it without the UI badge
+        console.log(`[Zinovis OTP]: The verification code for ${cleanEmail} is ${otpCode}`);
       } else {
-        setForgotStep('otp');
-        setEnteredOtp('');
-        setOtpResendCountdown(45);
         setResetSuccessMessage(`A 6-digit verification code was sent to ${cleanEmail}`);
       }
     } catch (err: any) {

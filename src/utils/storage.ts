@@ -27,87 +27,24 @@ function getInitialUsers(): User[] {
   try {
     const raw = localStorage.getItem(USERS_KEY);
     if (raw) {
-      return JSON.parse(raw);
+      const parsed = JSON.parse(raw) as User[];
+      // Filter out the legacy demo user if it exists in local storage
+      const filtered = parsed.filter(u => u.id !== 'zinovis_vip');
+      if (filtered.length !== parsed.length) {
+        localStorage.setItem(USERS_KEY, JSON.stringify(filtered));
+      }
+      return filtered;
     }
   } catch (e) {
     console.error('Failed to parse users:', e);
   }
 
-  // Initial demo user
-  const demoUser: User = {
-    id: 'zinovis_vip',
-    username: 'alex_cinephile',
-    name: 'Alex Vance',
-    email: 'alex@zinovis.tv',
-    password: 'password123',
-    avatar: DEFAULT_AVATAR,
-    joinedAt: Date.now() - 1000 * 60 * 60 * 24 * 30, // 30 days ago
-    watchHistory: [
-      {
-        id: 533535,
-        media_type: 'movie',
-        title: 'Deadpool & Wolverine',
-        poster_path: '/8cdWjvZQUExUUTzyp4t6EDMubfO.jpg',
-        backdrop_path: '/yDHYTjA3R0jFYba16jBB1jv8M9l.jpg',
-        vote_average: 7.7,
-        watched_at: Date.now() - 1000 * 60 * 60 * 2, // 2 hours ago
-        progress_percent: 100,
-      },
-      {
-        id: 94605,
-        media_type: 'tv',
-        title: 'Arcane',
-        poster_path: '/fqldrq26q7z9slTvo9232Q T6dG.jpg',
-        backdrop_path: '/2meX1nMdScFOoV4370rqHWIObye.jpg',
-        vote_average: 8.7,
-        watched_at: Date.now() - 1000 * 60 * 60 * 28, // 1 day ago
-        season: 2,
-        episode: 3,
-        episode_title: 'Finally Got the Name Right',
-        progress_percent: 75,
-      },
-      {
-        id: 693134,
-        media_type: 'movie',
-        title: 'Dune: Part Two',
-        poster_path: '/1pdfLvkbY9ohJlCjQH2CZjjYVvJ.jpg',
-        backdrop_path: '/xOMo8BRK7PfcJv9JCnx7s520DRq.jpg',
-        vote_average: 8.2,
-        watched_at: Date.now() - 1000 * 60 * 60 * 72, // 3 days ago
-        progress_percent: 100,
-      }
-    ],
-    watchLater: [
-      {
-        id: 1022789,
-        media_type: 'movie',
-        title: 'Inside Out 2',
-        poster_path: '/vpnVM9B6NMmQpWeZvzLvDESb2QY.jpg',
-        backdrop_path: '/stKGOmbuwhL46k9As0Y8IrRa7wT.jpg',
-        vote_average: 7.6,
-        release_date: '2024-06-11',
-        added_at: Date.now() - 1000 * 60 * 60 * 12,
-        watched: false,
-      },
-      {
-        id: 1184918,
-        media_type: 'movie',
-        title: 'The Wild Robot',
-        poster_path: '/wTnV3PCVW5O92JMrFvvrRil3RsH.jpg',
-        backdrop_path: '/417tYZ4XUyJr6UmJep4LKGxegQA.jpg',
-        vote_average: 8.4,
-        release_date: '2024-09-12',
-        added_at: Date.now() - 1000 * 60 * 60 * 48,
-        watched: false,
-      }
-    ],
-  };
-
-  const users = [demoUser];
+  // Return empty array instead of seeding demo user
+  const users: User[] = [];
   try {
     localStorage.setItem(USERS_KEY, JSON.stringify(users));
   } catch (e) {
-    console.error('Failed to seed demo user:', e);
+    console.error('Failed to init users:', e);
   }
   return users;
 }
