@@ -137,6 +137,7 @@ export const getUserFromFirebase = async (identifier: string): Promise<User | nu
 
     return null;
   } catch (error) {
+    if (checkQuotaError(error)) return null;
     console.error('Error fetching user from Firebase:', error);
     return null;
   }
@@ -180,7 +181,7 @@ export const syncWatchLaterToFirebase = async (userId: string, watchLater: Watch
  * Subscribe to real-time updates for a user document
  */
 export const subscribeToUserDoc = (userId: string, callback: (user: User | null) => void): (() => void) => {
-  if (!userId || firestoreQuotaExhausted) return () => {};
+  if (!userId) return () => {};
   const userRef = doc(db, USERS_COLLECTION, userId);
   return onSnapshot(
     userRef,
@@ -210,6 +211,7 @@ export const getAllUsersFromFirebase = async (): Promise<User[]> => {
     });
     return users;
   } catch (err) {
+    if (checkQuotaError(err)) return [];
     console.error('Failed to get all users from Firebase:', err);
     return [];
   }
@@ -258,7 +260,6 @@ export const sendSupportMessageToFirebase = async (msg: Omit<SupportMessage, 'id
  * Listen to all support messages in real-time (for Admin Panel)
  */
 export const subscribeToAllSupportMessages = (callback: (messages: SupportMessage[]) => void): (() => void) => {
-  if (firestoreQuotaExhausted) return () => {};
   try {
     const supportRef = collection(db, SUPPORT_COLLECTION);
     return onSnapshot(
@@ -286,7 +287,7 @@ export const subscribeToAllSupportMessages = (callback: (messages: SupportMessag
  * Listen to support messages for a specific user in real-time
  */
 export const subscribeToUserSupportMessages = (userId: string, callback: (messages: SupportMessage[]) => void): (() => void) => {
-  if (!userId || firestoreQuotaExhausted) return () => {};
+  if (!userId) return () => {};
   try {
     const supportRef = collection(db, SUPPORT_COLLECTION);
     return onSnapshot(
@@ -372,7 +373,6 @@ export const saveSystemSettingsToFirebase = async (settings: Partial<SystemSetti
  * Subscribe to real-time system settings updates
  */
 export const subscribeToSystemSettings = (callback: (settings: SystemSettings) => void): (() => void) => {
-  if (firestoreQuotaExhausted) return () => {};
   try {
     const docRef = doc(db, SYSTEM_CONFIG_COLLECTION, SETTINGS_DOC_ID);
     return onSnapshot(
@@ -463,7 +463,6 @@ export const deleteSubscriptionCodeFromFirebase = async (codeId: string): Promis
  * Subscribe to real-time subscription codes
  */
 export const subscribeToSubscriptionCodes = (callback: (codes: SubscriptionCode[]) => void): (() => void) => {
-  if (firestoreQuotaExhausted) return () => {};
   try {
     const codesRef = collection(db, CODES_COLLECTION);
     return onSnapshot(

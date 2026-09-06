@@ -142,7 +142,15 @@ export const AdminPanel: React.FC = () => {
       
       // Merge unique users by id
       const userMap = new Map<string, User>();
-      localUsers.forEach(u => userMap.set(u.id, u));
+      const remoteIds = new Set(remoteUsers.map(u => u.id));
+      
+      localUsers.forEach(u => {
+        userMap.set(u.id, u);
+        // Attempt to sync local users back to Firebase if they are missing (data recovery)
+        if (!remoteIds.has(u.id)) {
+          saveUserToFirebase(u).catch(console.error);
+        }
+      });
       remoteUsers.forEach(u => userMap.set(u.id, u));
       
       setUsers(Array.from(userMap.values()));
@@ -164,8 +172,22 @@ export const AdminPanel: React.FC = () => {
     });
 
     // Subscribe to subscription codes in real-time
-    const unsubscribeCodes = subscribeToSubscriptionCodes((codes) => {
-      setSubscriptionCodes(codes);
+    const unsubscribeCodes = subscribeToSubscriptionCodes((remoteCodes) => {
+      const localCodes = getSubscriptionCodes();
+      const remoteIds = new Set(remoteCodes.map(c => c.id));
+      
+      const codeMap = new Map<string, SubscriptionCode>();
+      localCodes.forEach(c => {
+        codeMap.set(c.id, c);
+        // Sync local code to Firebase if it's missing (e.g., due to previous quota limit)
+        if (!remoteIds.has(c.id)) {
+          saveSubscriptionCodeToFirebase(c).catch(console.error);
+        }
+      });
+      remoteCodes.forEach(c => codeMap.set(c.id, c));
+      
+      const mergedCodes = Array.from(codeMap.values()).sort((a, b) => b.createdAt - a.createdAt);
+      setSubscriptionCodes(mergedCodes);
     });
 
     return () => {
