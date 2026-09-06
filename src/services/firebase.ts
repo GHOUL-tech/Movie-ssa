@@ -35,6 +35,20 @@ export const db = firestoreDb;
 
 const USERS_COLLECTION = 'users';
 
+let firestoreQuotaExhausted = false;
+
+function checkQuotaError(err: any): boolean {
+  const msg = err?.message || String(err || '');
+  if (err?.code === 'resource-exhausted' || msg.includes('resource-exhausted') || msg.includes('Quota limit exceeded')) {
+    if (!firestoreQuotaExhausted) {
+      firestoreQuotaExhausted = true;
+      console.warn('Firestore quota limit reached. Operating in offline/local fallback mode.');
+    }
+    return true;
+  }
+  return false;
+}
+
 /**
  * Helper to recursively remove undefined values from objects before writing to Firestore
  */
@@ -61,6 +75,7 @@ export function cleanForFirestore<T>(obj: T): T {
  * Save or update complete user profile in Firebase Firestore
  */
 export const saveUserToFirebase = async (user: User): Promise<void> => {
+  if (firestoreQuotaExhausted) return;
   try {
     const userRef = doc(db, USERS_COLLECTION, user.id);
     const cleanUser: Record<string, any> = {
@@ -84,6 +99,7 @@ export const saveUserToFirebase = async (user: User): Promise<void> => {
     }
     await setDoc(userRef, cleanForFirestore(cleanUser), { merge: true });
   } catch (error) {
+    if (checkQuotaError(error)) return;
     console.error('Error saving user to Firebase:', error);
   }
 };
@@ -130,7 +146,7 @@ export const getUserFromFirebase = async (identifier: string): Promise<User | nu
  * Save / sync Watch History to Firebase
  */
 export const syncWatchHistoryToFirebase = async (userId: string, history: WatchHistoryItem[]): Promise<void> => {
-  if (!userId) return;
+  if (!userId || firestoreQuotaExhausted) return;
   try {
     const userRef = doc(db, USERS_COLLECTION, userId);
     await setDoc(userRef, {
@@ -138,6 +154,7 @@ export const syncWatchHistoryToFirebase = async (userId: string, history: WatchH
       updatedAt: Date.now(),
     }, { merge: true });
   } catch (error) {
+    if (checkQuotaError(error)) return;
     console.error('Error syncing watch history to Firebase:', error);
   }
 };
@@ -146,7 +163,7 @@ export const syncWatchHistoryToFirebase = async (userId: string, history: WatchH
  * Save / sync Watch Later (saved movies) to Firebase
  */
 export const syncWatchLaterToFirebase = async (userId: string, watchLater: WatchlistItem[]): Promise<void> => {
-  if (!userId) return;
+  if (!userId || firestoreQuotaExhausted) return;
   try {
     const userRef = doc(db, USERS_COLLECTION, userId);
     await setDoc(userRef, {
@@ -154,6 +171,7 @@ export const syncWatchLaterToFirebase = async (userId: string, watchLater: Watch
       updatedAt: Date.now(),
     }, { merge: true });
   } catch (error) {
+    if (checkQuotaError(error)) return;
     console.error('Error syncing watch later to Firebase:', error);
   }
 };
@@ -162,7 +180,7 @@ export const syncWatchLaterToFirebase = async (userId: string, watchLater: Watch
  * Subscribe to real-time updates for a user document
  */
 export const subscribeToUserDoc = (userId: string, callback: (user: User | null) => void): (() => void) => {
-  if (!userId) return () => {};
+  if (!userId || firestoreQuotaExhausted) return () => {};
   const userRef = doc(db, USERS_COLLECTION, userId);
   return onSnapshot(
     userRef,
@@ -174,7 +192,7 @@ export const subscribeToUserDoc = (userId: string, callback: (user: User | null)
       }
     },
     (error) => {
-      console.error('Firestore snapshot listener error:', error);
+      checkQuotaError(error);
     }
   );
 };
@@ -201,11 +219,13 @@ export const getAllUsersFromFirebase = async (): Promise<User[]> => {
  * Delete a user from Firebase Firestore
  */
 export const deleteUserFromFirebase = async (userId: string): Promise<boolean> => {
+  if (firestoreQuotaExhausted) return false;
   try {
     const userRef = doc(db, USERS_COLLECTION, userId);
     await deleteDoc(userRef);
     return true;
   } catch (err) {
+    if (checkQuotaError(err)) return false;
     console.error('Failed to delete user from Firebase:', err);
     return false;
   }
@@ -217,6 +237,7 @@ const SUPPORT_COLLECTION = 'support_messages';
  * Send a support message (user or admin)
  */
 export const sendSupportMessageToFirebase = async (msg: Omit<SupportMessage, 'id'>): Promise<string | null> => {
+  if (firestoreQuotaExhausted) return null;
   try {
     const messageId = `msg_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
     const msgRef = doc(db, SUPPORT_COLLECTION, messageId);
@@ -227,6 +248,7 @@ export const sendSupportMessageToFirebase = async (msg: Omit<SupportMessage, 'id
     await setDoc(msgRef, cleanForFirestore(data));
     return messageId;
   } catch (err) {
+    if (checkQuotaError(err)) return null;
     console.error('Failed to send support message:', err);
     return null;
   }
@@ -236,6 +258,7 @@ export const sendSupportMessageToFirebase = async (msg: Omit<SupportMessage, 'id
  * Listen to all support messages in real-time (for Admin Panel)
  */
 export const subscribeToAllSupportMessages = (callback: (messages: SupportMessage[]) => void): (() => void) => {
+  if (firestoreQuotaExhausted) return () => {};
   try {
     const supportRef = collection(db, SUPPORT_COLLECTION);
     return onSnapshot(
@@ -250,7 +273,7 @@ export const subscribeToAllSupportMessages = (callback: (messages: SupportMessag
         callback(msgs);
       },
       (err) => {
-        console.error('Error listening to all support messages:', err);
+        checkQuotaError(err);
       }
     );
   } catch (e) {
@@ -263,7 +286,7 @@ export const subscribeToAllSupportMessages = (callback: (messages: SupportMessag
  * Listen to support messages for a specific user in real-time
  */
 export const subscribeToUserSupportMessages = (userId: string, callback: (messages: SupportMessage[]) => void): (() => void) => {
-  if (!userId) return () => {};
+  if (!userId || firestoreQuotaExhausted) return () => {};
   try {
     const supportRef = collection(db, SUPPORT_COLLECTION);
     return onSnapshot(
@@ -280,7 +303,7 @@ export const subscribeToUserSupportMessages = (userId: string, callback: (messag
         callback(msgs);
       },
       (err) => {
-        console.error('Error listening to user support messages:', err);
+        checkQuotaError(err);
       }
     );
   } catch (e) {
@@ -293,10 +316,12 @@ export const subscribeToUserSupportMessages = (userId: string, callback: (messag
  * Mark message as read
  */
 export const markSupportMessageRead = async (messageId: string): Promise<void> => {
+  if (firestoreQuotaExhausted) return;
   try {
     const msgRef = doc(db, SUPPORT_COLLECTION, messageId);
     await setDoc(msgRef, { read: true }, { merge: true });
   } catch (err) {
+    if (checkQuotaError(err)) return;
     console.error('Error marking support message read:', err);
   }
 };
@@ -316,7 +341,7 @@ export const getSystemSettingsFromFirebase = async (): Promise<SystemSettings> =
       return snap.data() as SystemSettings;
     }
   } catch (err) {
-    console.warn('Failed to load system settings from Firebase:', err);
+    checkQuotaError(err);
   }
   return {
     subscriptionRequired: false,
@@ -329,6 +354,7 @@ export const getSystemSettingsFromFirebase = async (): Promise<SystemSettings> =
  * Save system settings to Firebase
  */
 export const saveSystemSettingsToFirebase = async (settings: Partial<SystemSettings>): Promise<void> => {
+  if (firestoreQuotaExhausted) return;
   try {
     const docRef = doc(db, SYSTEM_CONFIG_COLLECTION, SETTINGS_DOC_ID);
     const cleanData = cleanForFirestore({
@@ -337,6 +363,7 @@ export const saveSystemSettingsToFirebase = async (settings: Partial<SystemSetti
     });
     await setDoc(docRef, cleanData, { merge: true });
   } catch (err) {
+    if (checkQuotaError(err)) return;
     console.error('Failed to save system settings to Firebase:', err);
   }
 };
@@ -345,6 +372,7 @@ export const saveSystemSettingsToFirebase = async (settings: Partial<SystemSetti
  * Subscribe to real-time system settings updates
  */
 export const subscribeToSystemSettings = (callback: (settings: SystemSettings) => void): (() => void) => {
+  if (firestoreQuotaExhausted) return () => {};
   try {
     const docRef = doc(db, SYSTEM_CONFIG_COLLECTION, SETTINGS_DOC_ID);
     return onSnapshot(
@@ -361,7 +389,7 @@ export const subscribeToSystemSettings = (callback: (settings: SystemSettings) =
         }
       },
       (err) => {
-        console.warn('System settings listener error:', err);
+        checkQuotaError(err);
       }
     );
   } catch (e) {
@@ -385,7 +413,7 @@ export const getAllSubscriptionCodesFromFirebase = async (): Promise<Subscriptio
     });
     return codes.sort((a, b) => b.createdAt - a.createdAt);
   } catch (err) {
-    console.error('Failed to load subscription codes from Firebase:', err);
+    checkQuotaError(err);
     return [];
   }
 };
@@ -394,6 +422,7 @@ export const getAllSubscriptionCodesFromFirebase = async (): Promise<Subscriptio
  * Save / Create a new subscription code in Firebase
  */
 export const saveSubscriptionCodeToFirebase = async (code: SubscriptionCode): Promise<void> => {
+  if (firestoreQuotaExhausted) return;
   try {
     const codeRef = doc(db, CODES_COLLECTION, code.id);
     const cleanData = cleanForFirestore({
@@ -409,6 +438,7 @@ export const saveSubscriptionCodeToFirebase = async (code: SubscriptionCode): Pr
     });
     await setDoc(codeRef, cleanData);
   } catch (err) {
+    if (checkQuotaError(err)) return;
     console.error('Failed to save subscription code to Firebase:', err);
   }
 };
@@ -417,11 +447,13 @@ export const saveSubscriptionCodeToFirebase = async (code: SubscriptionCode): Pr
  * Delete a subscription code from Firebase
  */
 export const deleteSubscriptionCodeFromFirebase = async (codeId: string): Promise<boolean> => {
+  if (firestoreQuotaExhausted) return false;
   try {
     const codeRef = doc(db, CODES_COLLECTION, codeId);
     await deleteDoc(codeRef);
     return true;
   } catch (err) {
+    if (checkQuotaError(err)) return false;
     console.error('Failed to delete subscription code from Firebase:', err);
     return false;
   }
@@ -431,6 +463,7 @@ export const deleteSubscriptionCodeFromFirebase = async (codeId: string): Promis
  * Subscribe to real-time subscription codes
  */
 export const subscribeToSubscriptionCodes = (callback: (codes: SubscriptionCode[]) => void): (() => void) => {
+  if (firestoreQuotaExhausted) return () => {};
   try {
     const codesRef = collection(db, CODES_COLLECTION);
     return onSnapshot(
@@ -444,7 +477,7 @@ export const subscribeToSubscriptionCodes = (callback: (codes: SubscriptionCode[
         callback(codes);
       },
       (err) => {
-        console.warn('Subscription codes listener error:', err);
+        checkQuotaError(err);
       }
     );
   } catch (e) {
@@ -460,6 +493,9 @@ export const redeemSubscriptionCodeInFirebase = async (
   codeString: string,
   user: User
 ): Promise<{ success: boolean; message: string; tier?: SubscriptionTier; subscription?: any }> => {
+  if (firestoreQuotaExhausted) {
+    return { success: false, message: 'Cloud service quota limit reached. Please try again later.' };
+  }
   const cleanCode = codeString.trim().toUpperCase();
   if (!cleanCode) {
     return { success: false, message: 'Please enter a subscription code.' };
@@ -535,6 +571,9 @@ export const redeemSubscriptionCodeInFirebase = async (
       subscription: newSubscription,
     };
   } catch (err: any) {
+    if (checkQuotaError(err)) {
+      return { success: false, message: 'Cloud service quota limit reached. Please try again later.' };
+    }
     console.error('Error redeeming code in Firebase:', err);
     return { success: false, message: err.message || 'Failed to redeem subscription code.' };
   }
