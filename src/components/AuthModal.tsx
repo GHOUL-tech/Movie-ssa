@@ -557,28 +557,6 @@ ${EMAILJS_DRAFT_TEMPLATE.plainText}
                   </p>
                 </div>
 
-                {/* Simulated / Test Code Badge if in test mode or local demo */}
-                {isOtpSimulated && (
-                  <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs space-y-1.5">
-                    <div className="flex items-center justify-between">
-                      <span className="font-bold flex items-center gap-1.5">
-                        <Info className="w-3.5 h-3.5" />
-                        OTP Test Helper:
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => setEnteredOtp(generatedOtp)}
-                        className="px-2 py-0.5 rounded bg-amber-500/20 text-amber-200 hover:bg-amber-500/30 font-bold text-[10px] transition-colors"
-                      >
-                        Auto-fill OTP
-                      </button>
-                    </div>
-                    <div className="font-mono text-sm tracking-widest font-black text-white bg-neutral-900/80 px-3 py-1.5 rounded-xl border border-amber-500/20 text-center">
-                      {generatedOtp}
-                    </div>
-                  </div>
-                )}
-
                 <div>
                   <label className="block text-xs font-bold text-neutral-300 mb-1">
                     6-Digit Verification Code <span className="text-red-500">*</span>
