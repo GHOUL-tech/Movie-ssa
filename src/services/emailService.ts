@@ -1,9 +1,34 @@
 import emailjs from '@emailjs/browser';
 
-// EmailJS Credentials from environment or defaults
-const EMAILJS_SERVICE_ID = import.meta.env.VITE_EMAILJS_SERVICE_ID || '';
-const EMAILJS_TEMPLATE_ID = import.meta.env.VITE_EMAILJS_TEMPLATE_ID || '';
-const EMAILJS_PUBLIC_KEY = import.meta.env.VITE_EMAILJS_PUBLIC_KEY || '';
+export interface EmailJsConfig {
+  serviceId: string;
+  templateId: string;
+  publicKey: string;
+}
+
+export function getEmailJsConfig(): EmailJsConfig {
+  let serviceId = import.meta.env.VITE_EMAILJS_SERVICE_ID || '';
+  let templateId = import.meta.env.VITE_EMAILJS_TEMPLATE_ID || '';
+  let publicKey = import.meta.env.VITE_EMAILJS_PUBLIC_KEY || '';
+
+  try {
+    const custom = localStorage.getItem('zinovis_emailjs_custom_config');
+    if (custom) {
+      const parsed = JSON.parse(custom);
+      if (parsed.serviceId) serviceId = parsed.serviceId.trim();
+      if (parsed.templateId) templateId = parsed.templateId.trim();
+      if (parsed.publicKey) publicKey = parsed.publicKey.trim();
+    }
+  } catch {}
+
+  return { serviceId, templateId, publicKey };
+}
+
+export function saveCustomEmailJsConfig(cfg: EmailJsConfig) {
+  try {
+    localStorage.setItem('zinovis_emailjs_custom_config', JSON.stringify(cfg));
+  } catch {}
+}
 
 export interface SendOtpParams {
   to_email: string;
@@ -134,9 +159,10 @@ export const EMAILJS_DRAFT_TEMPLATE = EMAILJS_CODE_DRAFT_TEMPLATE;
  */
 export async function sendOtpViaEmail(params: SendOtpParams): Promise<SendOtpResult> {
   const { to_email, to_name, otp_code } = params;
+  const { serviceId, templateId, publicKey } = getEmailJsConfig();
 
   // If EmailJS credentials are provided, attempt real email delivery
-  if (EMAILJS_SERVICE_ID && EMAILJS_TEMPLATE_ID && EMAILJS_PUBLIC_KEY) {
+  if (serviceId && templateId && publicKey) {
     try {
       const templateParams = {
         to_email: to_email.trim(),
@@ -148,10 +174,10 @@ export async function sendOtpViaEmail(params: SendOtpParams): Promise<SendOtpRes
       };
 
       const response = await emailjs.send(
-        EMAILJS_SERVICE_ID,
-        EMAILJS_TEMPLATE_ID,
+        serviceId,
+        templateId,
         templateParams,
-        EMAILJS_PUBLIC_KEY
+        publicKey
       );
 
       if (response.status === 200 || response.text === 'OK') {

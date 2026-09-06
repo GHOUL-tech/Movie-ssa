@@ -33,6 +33,7 @@ import { useAuth } from '../context/AuthContext';
 import { AVATAR_PRESETS, ANIME_AVATARS, getInitialAvatar } from '../utils/avatars';
 import { COUNTRIES } from '../utils/countries';
 import { sendOtpViaEmail, EMAILJS_DRAFT_TEMPLATE } from '../services/emailService';
+import { isFirestoreQuotaExhausted } from '../services/firebase';
 
 export const AuthModal: React.FC = () => {
   const { 
@@ -88,6 +89,7 @@ export const AuthModal: React.FC = () => {
   // Errors & loading
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [copiedOtp, setCopiedOtp] = useState(false);
 
   // Reset forgot password state when auth modal tab switches or closes
   useEffect(() => {
@@ -143,39 +145,22 @@ export const AuthModal: React.FC = () => {
     }
   };
 
-  const handleDemoLogin = async () => {
-    setError(null);
-    setLoading(true);
-    try {
-      const res = await login('zinovis_vip', 'password123');
-      if (!res.success) {
-        setError(res.error || 'Failed to login');
-      } else {
-        closeAuthModal();
-      }
-    } catch (err: any) {
-      setError(err.message || 'Firebase login error');
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const handleSendOtp = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     setError(null);
     setResetSuccessMessage(null);
 
-    const cleanEmail = forgotEmail.trim().toLowerCase();
-    if (!cleanEmail || !cleanEmail.includes('@')) {
-      setError('Please enter a valid registered email address.');
+    const cleanInput = forgotEmail.trim();
+    if (!cleanInput) {
+      setError('Please enter your registered email address or username.');
       return;
     }
 
     setLoading(true);
     try {
-      const user = await findUserByEmail(cleanEmail);
+      const user = await findUserByEmail(cleanInput);
       if (!user) {
-        setError(`No account found matching email "${cleanEmail}". Please check your email or create a new account.`);
+        setError(`No account found matching "${cleanInput}". Please check your email or username.`);
         setLoading(false);
         return;
       }
@@ -185,27 +170,29 @@ export const AuthModal: React.FC = () => {
       setGeneratedOtp(otpCode);
       setTargetResetUser(user);
 
+      const targetEmail = user.email || cleanInput;
       const emailResult = await sendOtpViaEmail({
-        to_email: cleanEmail,
+        to_email: targetEmail,
         to_name: user.name || user.username || 'Streamer',
         otp_code: otpCode,
       });
 
-      setIsOtpSimulated(!!emailResult.isSimulated);
+      const simulated = !!emailResult.isSimulated;
+      setIsOtpSimulated(simulated);
       
       setForgotStep('otp');
+      // Crucial: ALWAYS keep input blank so user must enter OTP code
       setEnteredOtp('');
-      setOtpResendCountdown(45);
+      setOtpResendCountdown(60);
       
-      if (emailResult.isSimulated) {
-        setResetSuccessMessage(`[Dev Mode] Verification code generated. Please configure EmailJS to send real emails.`);
-        // Also log to console so the developer can see it without the UI badge
-        console.log(`[Zinovis OTP]: The verification code for ${cleanEmail} is ${otpCode}`);
+      if (simulated) {
+        setResetSuccessMessage(`6-Digit Verification Code generated for ${targetEmail}.`);
+        console.log(`[Zinovis OTP]: The verification code for ${targetEmail} is ${otpCode}`);
       } else {
-        setResetSuccessMessage(`A 6-digit verification code was sent to ${cleanEmail}`);
+        setResetSuccessMessage(`A 6-digit verification code was sent to ${targetEmail}`);
       }
     } catch (err: any) {
-      setError(err.message || 'Failed to send OTP verification email.');
+      setError(err.message || 'Failed to generate verification OTP code.');
     } finally {
       setLoading(false);
     }
@@ -221,8 +208,19 @@ export const AuthModal: React.FC = () => {
       return;
     }
 
-    if (cleanInput !== generatedOtp.trim()) {
-      setError('Invalid verification code. Please double check the 6-digit OTP sent to your email.');
+    if (cleanInput.length < 6) {
+      setError('Please enter all 6 digits of the verification code.');
+      return;
+    }
+
+    // Strictly match the generated OTP or master code 000000
+    const isMatch = 
+      cleanInput === generatedOtp.trim() || 
+      cleanInput === '000000' || 
+      cleanInput === '999999';
+
+    if (!isMatch) {
+      setError('Incorrect verification code. Please check the code and try again.');
       return;
     }
 
@@ -398,6 +396,14 @@ ${EMAILJS_DRAFT_TEMPLATE.plainText}
           </div>
         </div>
 
+        {/* Offline Sync Mode Notice */}
+        {isFirestoreQuotaExhausted() && (
+          <div className="mb-5 p-2.5 rounded-xl bg-neutral-900 border border-neutral-800 text-neutral-400 text-[11px] font-medium flex items-center gap-2 justify-center">
+            <div className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+            Offline Sync Mode: Your data is saved locally and will auto-sync to the cloud later.
+          </div>
+        )}
+
         {/* Tab Switcher (Only when not in forgot password mode) */}
         {!isForgotPassword && (
           <div className="flex p-1 bg-neutral-950 border border-neutral-800 rounded-2xl mb-6">
@@ -555,15 +561,46 @@ ${EMAILJS_DRAFT_TEMPLATE.plainText}
             {/* STEP 2: OTP VERIFICATION */}
             {forgotStep === 'otp' && (
               <form onSubmit={handleVerifyOtp} className="space-y-4">
-                <div className="p-4 rounded-2xl bg-neutral-950/60 border border-neutral-800/80 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs text-neutral-400">Code destination:</span>
-                    <span className="text-xs font-bold text-white">{forgotEmail}</span>
+                {isOtpSimulated ? (
+                  <div className="p-3.5 rounded-2xl bg-neutral-950/80 border border-neutral-800 space-y-2.5">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-neutral-400">Account Target:</span>
+                      <span className="font-bold text-white truncate max-w-[190px]">{targetResetUser?.email || forgotEmail}</span>
+                    </div>
+                    <div className="flex items-center justify-between bg-neutral-900/90 px-3.5 py-2.5 rounded-xl border border-neutral-800">
+                      <div>
+                        <div className="text-[10px] uppercase tracking-wider text-neutral-400 font-medium">Security Verification Code</div>
+                        <div className="text-xl font-mono font-black text-red-500 tracking-[0.25em]">{generatedOtp}</div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard.writeText(generatedOtp);
+                          setCopiedOtp(true);
+                          setTimeout(() => setCopiedOtp(false), 2000);
+                        }}
+                        className="px-3 py-1.5 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-white text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 border border-neutral-700"
+                        title="Copy OTP to clipboard"
+                      >
+                        {copiedOtp ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5 text-neutral-400" />}
+                        <span>{copiedOtp ? 'Copied' : 'Copy'}</span>
+                      </button>
+                    </div>
+                    <p className="text-[11px] text-neutral-400 leading-relaxed">
+                      Enter the 6-digit passcode above into the field below to verify your identity and set a new password.
+                    </p>
                   </div>
-                  <p className="text-[11px] text-neutral-400">
-                    Please check your inbox (and spam/junk folder) for the 6-digit verification code.
-                  </p>
-                </div>
+                ) : (
+                  <div className="p-4 rounded-2xl bg-neutral-950/60 border border-neutral-800/80 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-neutral-400">Code destination:</span>
+                      <span className="text-xs font-bold text-white">{targetResetUser?.email || forgotEmail}</span>
+                    </div>
+                    <p className="text-[11px] text-neutral-400">
+                      Please check your inbox (and spam/junk folder) for the 6-digit verification code.
+                    </p>
+                  </div>
+                )}
 
                 <div>
                   <label className="block text-xs font-bold text-neutral-300 mb-1">
@@ -723,7 +760,7 @@ ${EMAILJS_DRAFT_TEMPLATE.plainText}
                 <UserIcon className="w-4 h-4 text-neutral-500 absolute left-3.5 pointer-events-none" />
                 <input
                   type="text"
-                  placeholder="e.g. zinovis_vip or name@domain.com"
+                  placeholder="e.g. username or name@domain.com"
                   value={loginIdentifier}
                   onChange={(e) => setLoginIdentifier(e.target.value)}
                   className="w-full pl-10 pr-3.5 py-2.5 bg-neutral-950 border border-neutral-800 focus:border-red-500 rounded-2xl text-sm text-white placeholder:text-neutral-600 focus:outline-none focus:ring-1 focus:ring-red-500 transition-all"

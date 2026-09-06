@@ -43,7 +43,9 @@ import {
   Save,
   Key,
   Eye,
-  EyeOff
+  EyeOff,
+  Download,
+  Info
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -56,7 +58,10 @@ import {
   subscribeToSubscriptionCodes,
   saveSubscriptionCodeToFirebase,
   deleteSubscriptionCodeFromFirebase,
-  saveUserToFirebase
+  saveUserToFirebase,
+  isFirestoreQuotaExhausted,
+  onQuotaStatusChange,
+  testFirestoreConnection
 } from '../services/firebase';
 import { 
   getAllUsers, 
@@ -69,13 +74,23 @@ import {
   generateRandomCodeString,
   saveUsersLocally,
   getUserSubscriptionDaysLeft,
-  checkUserHasActiveSubscription
+  checkUserHasActiveSubscription,
+  getPendingUserSyncs,
+  syncPendingUsersToFirebase,
+  restoreMasterSubscriptionCodes
 } from '../utils/storage';
+import { 
+  getEmailJsConfig, 
+  saveCustomEmailJsConfig, 
+  sendOtpViaEmail, 
+  EmailJsConfig 
+} from '../services/emailService';
 import { AVATAR_PRESETS } from '../utils/avatars';
 import { getTrending, getImageUrl } from '../services/tmdb';
 
 export const AdminPanel: React.FC = () => {
   const { 
+    currentUser,
     isAdmin, 
     logoutAdmin, 
     isSubscriptionRequired, 
@@ -126,6 +141,31 @@ export const AdminPanel: React.FC = () => {
   const [editFormAvatar, setEditFormAvatar] = useState('');
   const [showInspectPass, setShowInspectPass] = useState(false);
 
+  // Firebase Quota & Offline Sync Diagnostics
+  const [quotaExhausted, setQuotaExhausted] = useState(isFirestoreQuotaExhausted());
+  const [testingConnection, setTestingConnection] = useState(false);
+  const [connectionTestResult, setConnectionTestResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [isSyncingPending, setIsSyncingPending] = useState(false);
+  const [syncPendingResult, setSyncPendingResult] = useState<string | null>(null);
+  const [pendingUsers, setPendingUsers] = useState<User[]>(getPendingUserSyncs());
+
+  // Subscription Codes Backup & Restore
+  const [restoringCodes, setRestoringCodes] = useState(false);
+
+  // EmailJS Configuration Management (for Vercel & Live environments)
+  const [emailConfig, setEmailConfig] = useState<EmailJsConfig>(getEmailJsConfig());
+  const [emailConfigSuccess, setEmailConfigSuccess] = useState<string | null>(null);
+  const [testingEmail, setTestingEmail] = useState(false);
+  const [testEmailResult, setTestEmailResult] = useState<{ success: boolean; message: string } | null>(null);
+
+  useEffect(() => {
+    const unsubQuota = onQuotaStatusChange((status) => {
+      setQuotaExhausted(status);
+      setPendingUsers(getPendingUserSyncs());
+    });
+    return () => unsubQuota();
+  }, []);
+
   // If not admin, redirect to home
   useEffect(() => {
     if (!isAdmin) {
@@ -137,8 +177,16 @@ export const AdminPanel: React.FC = () => {
   const loadUsers = async () => {
     setLoadingUsers(true);
     try {
-      const remoteUsers = await getAllUsersFromFirebase();
       const localUsers = getAllUsers();
+      let remoteUsers: User[] = [];
+
+      if (!isFirestoreQuotaExhausted()) {
+        try {
+          remoteUsers = await getAllUsersFromFirebase();
+        } catch (err) {
+          console.warn('Failed to load remote users:', err);
+        }
+      }
       
       // Merge unique users by id
       const userMap = new Map<string, User>();
@@ -146,19 +194,137 @@ export const AdminPanel: React.FC = () => {
       
       localUsers.forEach(u => {
         userMap.set(u.id, u);
-        // Attempt to sync local users back to Firebase if they are missing (data recovery)
-        if (!remoteIds.has(u.id)) {
+        // Only attempt to sync local users back to Firebase if remote users were successfully fetched and quota is healthy
+        if (remoteUsers.length > 0 && !remoteIds.has(u.id) && !isFirestoreQuotaExhausted()) {
           saveUserToFirebase(u).catch(console.error);
         }
       });
       remoteUsers.forEach(u => userMap.set(u.id, u));
       
       setUsers(Array.from(userMap.values()));
+      setPendingUsers(getPendingUserSyncs());
     } catch (err) {
       console.error('Failed to load users for admin:', err);
       setUsers(getAllUsers());
     } finally {
       setLoadingUsers(false);
+    }
+  };
+
+  const handleDownloadUsersBackup = () => {
+    const all = getAllUsers();
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(all, null, 2));
+    const downloadAnchor = document.createElement('a');
+    downloadAnchor.setAttribute("href", dataStr);
+    downloadAnchor.setAttribute("download", `zinovis_users_backup_${new Date().toISOString().slice(0, 10)}.json`);
+    document.body.appendChild(downloadAnchor);
+    downloadAnchor.click();
+    downloadAnchor.remove();
+  };
+
+  const handleTestConnection = async () => {
+    setTestingConnection(true);
+    setConnectionTestResult(null);
+    try {
+      const res = await testFirestoreConnection();
+      setQuotaExhausted(res.quotaExhausted);
+      if (res.connected) {
+        setConnectionTestResult({ success: true, message: 'Firebase Firestore is connected! Daily quota is active and healthy.' });
+        loadUsers();
+      } else if (res.quotaExhausted) {
+        setConnectionTestResult({ 
+          success: false, 
+          message: 'Firebase Quota Exceeded (resource-exhausted). Free tier daily read/write quota reached. Resets at 00:00 UTC.' 
+        });
+      } else {
+        setConnectionTestResult({ success: false, message: res.error || 'Connection failed.' });
+      }
+    } catch (err: any) {
+      setConnectionTestResult({ success: false, message: err?.message || 'Connection test failed.' });
+    } finally {
+      setTestingConnection(false);
+    }
+  };
+
+  const handleSyncPending = async () => {
+    setIsSyncingPending(true);
+    setSyncPendingResult(null);
+    try {
+      const res = await syncPendingUsersToFirebase();
+      if (res.quotaStillExhausted) {
+        setSyncPendingResult('Firebase quota is still exhausted. Cloud database rejected sync.');
+      } else {
+        setSyncPendingResult(`Synced ${res.synced} offline account(s) to Firebase!`);
+        setPendingUsers(getPendingUserSyncs());
+        loadUsers();
+      }
+    } catch (err: any) {
+      setSyncPendingResult('Sync error: ' + (err?.message || 'Failed to sync'));
+    } finally {
+      setIsSyncingPending(false);
+    }
+  };
+
+  const handleBackupSubscriptionCodes = () => {
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(subscriptionCodes, null, 2));
+    const downloadAnchor = document.createElement('a');
+    downloadAnchor.setAttribute("href", dataStr);
+    downloadAnchor.setAttribute("download", `zinovis_subscription_codes_backup_${new Date().toISOString().slice(0, 10)}.json`);
+    document.body.appendChild(downloadAnchor);
+    downloadAnchor.click();
+    downloadAnchor.remove();
+  };
+
+  const handleRestoreMasterCodes = () => {
+    setRestoringCodes(true);
+    try {
+      const updated = restoreMasterSubscriptionCodes();
+      setSubscriptionCodes(updated);
+      alert('Master VIP subscription codes (1 Month, 1 Year, Lifetime) have been restored and verified!');
+    } catch (e: any) {
+      alert('Failed to restore codes: ' + e?.message);
+    } finally {
+      setRestoringCodes(false);
+    }
+  };
+
+  const handleSaveEmailConfig = (e: React.FormEvent) => {
+    e.preventDefault();
+    saveCustomEmailJsConfig(emailConfig);
+    setEmailConfigSuccess('EmailJS settings saved successfully to browser storage!');
+    setTimeout(() => setEmailConfigSuccess(null), 4000);
+  };
+
+  const handleTestEmailSend = async () => {
+    setTestingEmail(true);
+    setTestEmailResult(null);
+    try {
+      const targetEmail = currentUser?.email || 'admin@zinovis.com';
+      const testCode = Math.floor(100000 + Math.random() * 900000).toString();
+      const res = await sendOtpViaEmail({
+        to_email: targetEmail,
+        to_name: currentUser?.name || 'Admin',
+        otp_code: testCode,
+      });
+
+      if (!res.isSimulated) {
+        setTestEmailResult({
+          success: true,
+          message: `Live email dispatched to ${targetEmail}! Check your inbox.`,
+        });
+      } else {
+        setTestEmailResult({
+          success: true,
+          message: `Demo mode active. Verification code generated: ${testCode}. (To send live emails, enter your EmailJS credentials above)`,
+        });
+      }
+    } catch (err: any) {
+      setTestEmailResult({
+        success: false,
+        message: 'Test failed: ' + (err?.message || 'Unknown error'),
+      });
+    } finally {
+      setTestingEmail(false);
     }
   };
 
@@ -692,6 +858,105 @@ export const AdminPanel: React.FC = () => {
       {/* Main Content Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-8 space-y-8">
         
+        {/* Firebase Backend Diagnostics & Quota Monitor */}
+        <div className={`p-4 sm:p-5 rounded-3xl border transition-all ${
+          quotaExhausted 
+            ? 'bg-amber-500/10 border-amber-500/30 text-amber-200' 
+            : 'bg-neutral-900/60 border-neutral-800 text-neutral-300'
+        }`}>
+          <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+            <div className="flex items-start sm:items-center gap-3">
+              <div className={`w-3 h-3 rounded-full mt-1 sm:mt-0 flex-shrink-0 ${
+                quotaExhausted ? 'bg-amber-400 animate-pulse' : 'bg-emerald-400'
+              }`} />
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h3 className="text-sm sm:text-base font-bold text-white flex items-center gap-1.5">
+                    Firebase Cloud Database:
+                    <span className={quotaExhausted ? 'text-amber-400' : 'text-emerald-400'}>
+                      {quotaExhausted ? 'Offline Mode Active (Daily Quota Reached)' : 'Connected & Healthy'}
+                    </span>
+                  </h3>
+                  {pendingUsers.length > 0 && (
+                    <span className="px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-400 border border-blue-500/30 text-[10px] font-bold">
+                      {pendingUsers.length} Offline Account(s) Queued
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-neutral-400 mt-1 leading-relaxed">
+                  {quotaExhausted 
+                    ? 'Google Cloud daily free quota limit (50,000 reads / 20,000 writes) has been reached. Quota resets automatically every 24 hours at 00:00 UTC. User accounts created on this device are safeguarded in local storage.' 
+                    : 'Real-time synchronization active. User profiles, watchlists, subscriptions, and live chats sync directly to Firestore.'}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 flex-wrap w-full md:w-auto justify-start md:justify-end">
+              <button
+                type="button"
+                onClick={handleDownloadUsersBackup}
+                className="px-3 py-1.5 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-white border border-neutral-700 text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer"
+                title="Download all user account data as a JSON backup"
+              >
+                <Download className="w-3.5 h-3.5 text-blue-400" />
+                <span>Backup Accounts JSON</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleTestConnection}
+                disabled={testingConnection}
+                className="px-3 py-1.5 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-white border border-neutral-700 text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 text-amber-400 ${testingConnection ? 'animate-spin' : ''}`} />
+                <span>{testingConnection ? 'Testing...' : 'Check Status'}</span>
+              </button>
+
+              {quotaExhausted && (
+                <a
+                  href="https://console.firebase.google.com/project/ai-studio-applet-webapp-8c6f3/firestore/databases/ai-studio-zinovis-4030a834-9ba9-449a-b2bf-8041fe4e9a68/data?openUpgradeDialog=true"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-amber-600 to-red-600 hover:from-amber-500 hover:to-red-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-md shadow-red-600/20 transition-all"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  <span>Firebase Console</span>
+                </a>
+              )}
+
+              {pendingUsers.length > 0 && !quotaExhausted && (
+                <button
+                  type="button"
+                  onClick={handleSyncPending}
+                  disabled={isSyncingPending}
+                  className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isSyncingPending ? 'animate-spin' : ''}`} />
+                  <span>Sync Pending ({pendingUsers.length})</span>
+                </button>
+              )}
+            </div>
+          </div>
+
+          {connectionTestResult && (
+            <div className={`mt-3 p-2.5 rounded-xl text-xs flex items-center gap-2 border ${
+              connectionTestResult.success 
+                ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300' 
+                : 'bg-red-500/10 border-red-500/30 text-red-300'
+            }`}>
+              {connectionTestResult.success ? <CheckCircle2 className="w-3.5 h-3.5 flex-shrink-0 text-emerald-400" /> : <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 text-red-400" />}
+              <span>{connectionTestResult.message}</span>
+            </div>
+          )}
+
+          {syncPendingResult && (
+            <div className="mt-3 p-2.5 rounded-xl text-xs flex items-center gap-2 bg-blue-500/10 border border-blue-500/30 text-blue-300">
+              <Info className="w-3.5 h-3.5 flex-shrink-0 text-blue-400" />
+              <span>{syncPendingResult}</span>
+            </div>
+          )}
+        </div>
+
         {/* ===================== TAB 1: ANALYTICS DASHBOARD ===================== */}
         {activeTab === 'analytics' && (
           <div className="space-y-8 animate-fadeIn">
@@ -1536,27 +1801,53 @@ export const AdminPanel: React.FC = () => {
 
             {/* Subscription Codes Management Table */}
             <div className="space-y-4">
-              <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+              <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
                 <div>
                   <h3 className="text-base font-bold text-white flex items-center gap-2">
                     <span>Subscription Codes Database ({subscriptionCodes.length})</span>
                   </h3>
-                  <p className="text-xs text-neutral-400">Search, filter, copy, and manage subscription codes</p>
+                  <p className="text-xs text-neutral-400">Search, filter, copy, backup, and restore subscription codes</p>
                 </div>
 
-                {/* Filters */}
-                <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
-                  {/* Search */}
-                  <div className="relative flex-1 sm:w-60">
-                    <Search className="w-3.5 h-3.5 text-neutral-500 absolute left-3 top-1/2 -translate-y-1/2" />
-                    <input
-                      type="text"
-                      placeholder="Search code, user, tag..."
-                      value={subCodeSearch}
-                      onChange={(e) => setSubCodeSearch(e.target.value)}
-                      className="w-full pl-8 pr-3 py-1.5 bg-neutral-900 border border-neutral-800 rounded-xl text-xs text-white placeholder:text-neutral-500 focus:outline-none focus:border-red-500"
-                    />
-                  </div>
+                <div className="flex flex-wrap items-center gap-2.5 w-full lg:w-auto">
+                  {/* Backup Subscription Codes JSON */}
+                  <button
+                    type="button"
+                    onClick={handleBackupSubscriptionCodes}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-xs font-semibold text-neutral-200 border border-neutral-700 transition-all cursor-pointer"
+                    title="Export all subscription codes as JSON backup"
+                  >
+                    <Download className="w-3.5 h-3.5 text-blue-400" />
+                    <span>Backup Codes JSON</span>
+                  </button>
+
+                  {/* Restore 3 Master VIP Codes */}
+                  <button
+                    type="button"
+                    onClick={handleRestoreMasterCodes}
+                    disabled={restoringCodes}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-600/20 hover:bg-amber-600/30 text-xs font-semibold text-amber-300 border border-amber-500/30 transition-all cursor-pointer"
+                    title="Restore 3 Master VIP Codes: 1 Month, 1 Year, Lifetime"
+                  >
+                    <Crown className="w-3.5 h-3.5 text-amber-400" />
+                    <span>{restoringCodes ? 'Restoring...' : 'Restore 3 Master VIP Codes'}</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Filters */}
+              <div className="flex flex-wrap items-center gap-2 w-full">
+                {/* Search */}
+                <div className="relative flex-1 min-w-[200px]">
+                  <Search className="w-3.5 h-3.5 text-neutral-500 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    placeholder="Search code, user, tag..."
+                    value={subCodeSearch}
+                    onChange={(e) => setSubCodeSearch(e.target.value)}
+                    className="w-full pl-8 pr-3 py-1.5 bg-neutral-900 border border-neutral-800 rounded-xl text-xs text-white placeholder:text-neutral-500 focus:outline-none focus:border-red-500"
+                  />
+                </div>
 
                   {/* Tier Filter */}
                   <select
@@ -1582,7 +1873,6 @@ export const AdminPanel: React.FC = () => {
                     <option value="redeemed">Redeemed</option>
                   </select>
                 </div>
-              </div>
 
               {/* Codes Table */}
               <div className="bg-neutral-900/90 border border-neutral-800 rounded-3xl overflow-hidden shadow-2xl">
@@ -1689,6 +1979,125 @@ export const AdminPanel: React.FC = () => {
                     </tbody>
                   </table>
                 </div>
+              </div>
+
+              {/* Email & OTP Password Reset Service (Vercel Integration) */}
+              <div className="p-6 rounded-3xl bg-neutral-900 border border-neutral-800 shadow-xl space-y-5">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4 border-b border-neutral-800">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2.5 rounded-2xl bg-red-600/10 border border-red-500/20 text-red-400">
+                      <Send className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h4 className="text-base font-bold text-white">Email &amp; OTP Password Reset Service (Vercel Support)</h4>
+                      <p className="text-xs text-neutral-400">
+                        Configure EmailJS for real email delivery of password reset OTP codes on Vercel or live hosting.
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Status Badge */}
+                  <div className="flex items-center gap-2">
+                    {emailConfig.serviceId && emailConfig.templateId && emailConfig.publicKey ? (
+                      <span className="px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-semibold flex items-center gap-1.5">
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        <span>Live EmailJS Configured</span>
+                      </span>
+                    ) : (
+                      <span className="px-3 py-1 rounded-full bg-blue-500/10 border border-blue-500/30 text-blue-400 text-xs font-semibold flex items-center gap-1.5">
+                        <Info className="w-3.5 h-3.5" />
+                        <span>Demo OTP Mode (Code Screen Verification)</span>
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {emailConfigSuccess && (
+                  <div className="p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs font-semibold flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
+                    <span>{emailConfigSuccess}</span>
+                  </div>
+                )}
+
+                {testEmailResult && (
+                  <div className={`p-3.5 rounded-2xl border text-xs font-semibold flex items-center gap-2 ${
+                    testEmailResult.success 
+                      ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300' 
+                      : 'bg-red-500/10 border-red-500/30 text-red-300'
+                  }`}>
+                    {testEmailResult.success ? <CheckCircle2 className="w-4 h-4 flex-shrink-0" /> : <AlertTriangle className="w-4 h-4 flex-shrink-0" />}
+                    <span>{testEmailResult.message}</span>
+                  </div>
+                )}
+
+                <form onSubmit={handleSaveEmailConfig} className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
+                    <div>
+                      <label className="block text-xs font-bold text-neutral-300 mb-1.5">
+                        EmailJS Service ID
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="e.g. service_xxxxxxx"
+                        value={emailConfig.serviceId}
+                        onChange={(e) => setEmailConfig({ ...emailConfig, serviceId: e.target.value })}
+                        className="w-full px-3.5 py-2.5 bg-neutral-950 border border-neutral-800 focus:border-red-500 rounded-2xl text-xs text-white placeholder:text-neutral-600 focus:outline-none focus:ring-1 focus:ring-red-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-neutral-300 mb-1.5">
+                        EmailJS Template ID
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="e.g. template_xxxxxxx"
+                        value={emailConfig.templateId}
+                        onChange={(e) => setEmailConfig({ ...emailConfig, templateId: e.target.value })}
+                        className="w-full px-3.5 py-2.5 bg-neutral-950 border border-neutral-800 focus:border-red-500 rounded-2xl text-xs text-white placeholder:text-neutral-600 focus:outline-none focus:ring-1 focus:ring-red-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-neutral-300 mb-1.5">
+                        EmailJS Public Key
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="e.g. public_key_xxxxxxx"
+                        value={emailConfig.publicKey}
+                        onChange={(e) => setEmailConfig({ ...emailConfig, publicKey: e.target.value })}
+                        className="w-full px-3.5 py-2.5 bg-neutral-950 border border-neutral-800 focus:border-red-500 rounded-2xl text-xs text-white placeholder:text-neutral-600 focus:outline-none focus:ring-1 focus:ring-red-500"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
+                    <p className="text-[11px] text-neutral-500 max-w-xl leading-relaxed">
+                      💡 Tip for Vercel deployments: You can configure these 3 values either here directly, or add them in your Vercel Project Settings as <code className="text-neutral-300">VITE_EMAILJS_SERVICE_ID</code>, <code className="text-neutral-300">VITE_EMAILJS_TEMPLATE_ID</code>, and <code className="text-neutral-300">VITE_EMAILJS_PUBLIC_KEY</code>.
+                    </p>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={handleTestEmailSend}
+                        disabled={testingEmail}
+                        className="px-4 py-2 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-white text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer border border-neutral-700 disabled:opacity-50"
+                      >
+                        <RefreshCw className={`w-3.5 h-3.5 ${testingEmail ? 'animate-spin' : ''}`} />
+                        <span>{testingEmail ? 'Testing...' : 'Send Test OTP'}</span>
+                      </button>
+
+                      <button
+                        type="submit"
+                        className="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-500 text-white text-xs font-bold transition-all shadow-lg shadow-red-600/20 flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <Save className="w-3.5 h-3.5" />
+                        <span>Save EmailJS Settings</span>
+                      </button>
+                    </div>
+                  </div>
+                </form>
               </div>
             </div>
 

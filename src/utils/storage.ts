@@ -3,6 +3,8 @@ import { DEFAULT_AVATAR, getInitialAvatar } from './avatars';
 import { 
   saveUserToFirebase, 
   getUserFromFirebase, 
+  getAllUsersFromFirebase,
+  isFirestoreQuotaExhausted,
   syncWatchHistoryToFirebase, 
   syncWatchLaterToFirebase,
   deleteUserFromFirebase,
@@ -15,6 +17,7 @@ const WATCHLIST_KEY = 'cinescope_watchlist_v1';
 const CONTINUE_WATCHING_KEY = 'cinescope_continue_watching_v1';
 const PREFERRED_SERVER_KEY = 'cinescope_server_pref_v1';
 const USERS_KEY = 'zinovis_users_v2';
+const PENDING_USERS_KEY = 'zinovis_pending_users_v1';
 const CURRENT_USER_ID_KEY = 'zinovis_current_user_id_v2';
 const GUEST_HISTORY_KEY = 'zinovis_guest_history_v1';
 const ADMIN_SESSION_KEY = 'zinovis_admin_auth_session';
@@ -163,10 +166,68 @@ export function registerUser(params: {
   saveUsers(users);
   setCurrentUser(newUser);
 
-  // Background save to Firebase backend
-  saveUserToFirebase(newUser).catch(err => console.error('Firebase register save error:', err));
+  // Background save to Firebase backend (or queue for sync if quota exceeded)
+  if (!isFirestoreQuotaExhausted()) {
+    saveUserToFirebase(newUser).catch(err => {
+      console.error('Firebase register save error:', err);
+      addPendingUserSync(newUser);
+    });
+  } else {
+    addPendingUserSync(newUser);
+  }
 
   return { success: true, user: newUser };
+}
+
+export function getPendingUserSyncs(): User[] {
+  try {
+    const raw = localStorage.getItem(PENDING_USERS_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function addPendingUserSync(user: User): void {
+  try {
+    const pending = getPendingUserSyncs();
+    if (!pending.some(u => u.id === user.id)) {
+      pending.push(user);
+      localStorage.setItem(PENDING_USERS_KEY, JSON.stringify(pending));
+    }
+  } catch (e) {
+    console.error('Failed to add pending user sync:', e);
+  }
+}
+
+export async function syncPendingUsersToFirebase(): Promise<{ synced: number; failed: number; quotaStillExhausted?: boolean }> {
+  if (isFirestoreQuotaExhausted()) {
+    return { synced: 0, failed: 0, quotaStillExhausted: true };
+  }
+  const pending = getPendingUserSyncs();
+  if (pending.length === 0) return { synced: 0, failed: 0 };
+
+  let synced = 0;
+  let failed = 0;
+  const remaining: User[] = [];
+
+  for (const user of pending) {
+    try {
+      await saveUserToFirebase(user);
+      if (isFirestoreQuotaExhausted()) {
+        remaining.push(user);
+        failed++;
+        break;
+      }
+      synced++;
+    } catch {
+      remaining.push(user);
+      failed++;
+    }
+  }
+
+  localStorage.setItem(PENDING_USERS_KEY, JSON.stringify(remaining));
+  return { synced, failed, quotaStillExhausted: isFirestoreQuotaExhausted() };
 }
 
 export async function registerUserAsync(params: {
@@ -185,14 +246,16 @@ export async function registerUserAsync(params: {
   const cleanUsername = (params.username?.trim() || fallbackUsername).toLowerCase();
   const customId = (params.id?.trim() || cleanUsername || `usr_${Date.now().toString(36)}`).toLowerCase();
 
-  // Check Firebase first for existing user
-  try {
-    const existingRemote = await getUserFromFirebase(customId);
-    if (existingRemote) {
-      return { success: false, error: `Account ID "${customId}" is already registered in Firebase.` };
+  // Check Firebase first for existing user only if quota is not exhausted
+  if (!isFirestoreQuotaExhausted()) {
+    try {
+      const existingRemote = await getUserFromFirebase(customId);
+      if (existingRemote) {
+        return { success: false, error: `Account ID "${customId}" is already registered in Firebase.` };
+      }
+    } catch (err) {
+      console.warn('Firebase pre-check failed, continuing with registration:', err);
     }
-  } catch (err) {
-    console.warn('Firebase pre-check failed, continuing with registration:', err);
   }
 
   return registerUser(params);
@@ -246,6 +309,14 @@ export async function loginUserAsync(
     return { success: true, user: found };
   }
 
+  // If Firebase quota is already known to be exhausted, provide a helpful and honest explanation
+  if (isFirestoreQuotaExhausted()) {
+    return { 
+      success: false, 
+      error: 'Account not found locally, and cloud sync is temporarily paused for offline mode. If you created your account on this device, please verify your spelling.' 
+    };
+  }
+
   // 2. Query Firebase Firestore database
   try {
     const remoteUser = await getUserFromFirebase(clean);
@@ -269,7 +340,14 @@ export async function loginUserAsync(
     console.error('Firebase login error:', err);
   }
 
-  return { success: false, error: 'User not found in Firebase backend. Check your ID, username, or email.' };
+  if (isFirestoreQuotaExhausted()) {
+    return { 
+      success: false, 
+      error: 'Account not found locally, and cloud sync is currently paused for offline mode.' 
+    };
+  }
+
+  return { success: false, error: 'User not found. Please check your ID, username, or email, or create a new account.' };
 }
 
 export function logoutUser(): void {
@@ -406,16 +484,20 @@ export function changeUserPassword(currentPassword: string, newPassword: string)
   return { success: true };
 }
 
-export async function findUserByEmail(email: string): Promise<User | null> {
-  const clean = email.trim().toLowerCase();
+export async function findUserByEmail(identifier: string): Promise<User | null> {
+  const clean = identifier.trim().toLowerCase();
   if (!clean) return null;
 
-  // 1. Check local users
+  // 1. Check local users by email, username, or id
   const users = getAllUsers();
-  const localFound = users.find(u => u.email.toLowerCase() === clean);
+  const localFound = users.find(u => 
+    (u.email && u.email.trim().toLowerCase() === clean) ||
+    (u.username && u.username.trim().toLowerCase() === clean) ||
+    (u.id && u.id.trim().toLowerCase() === clean)
+  );
   if (localFound) return localFound;
 
-  // 2. Check Firebase Firestore
+  // 2. Check Firebase Firestore direct query
   try {
     const remote = await getUserFromFirebase(clean);
     if (remote) {
@@ -429,7 +511,29 @@ export async function findUserByEmail(email: string): Promise<User | null> {
       return remote;
     }
   } catch (err) {
-    console.error('Error finding user by email in Firebase:', err);
+    console.error('Error finding user by identifier in Firebase:', err);
+  }
+
+  // 3. Fallback: Search all users from Firebase in case query had case mismatch or custom ID
+  try {
+    const allRemotes = await getAllUsersFromFirebase();
+    const match = allRemotes.find(u => 
+      (u.email && u.email.trim().toLowerCase() === clean) ||
+      (u.username && u.username.trim().toLowerCase() === clean) ||
+      (u.id && u.id.trim().toLowerCase() === clean)
+    );
+    if (match) {
+      const idx = users.findIndex(u => u.id === match.id);
+      if (idx >= 0) {
+        users[idx] = match;
+      } else {
+        users.push(match);
+      }
+      saveUsersLocally(users);
+      return match;
+    }
+  } catch (err) {
+    console.error('Error scanning all Firebase users for match:', err);
   }
 
   return null;
@@ -469,6 +573,8 @@ export async function resetPasswordWithEmail(
 
   saveUsers(users);
   setCurrentUser(updated);
+  // Ensure the updated password gets saved directly to Firebase
+  saveUserToFirebase(updated).catch(err => console.error('Firebase save user on password reset error:', err));
   return { success: true, user: updated };
 }
 
@@ -751,16 +857,69 @@ export function saveSystemSettings(settings: Partial<SystemSettings>): SystemSet
 // Subscription Codes Management
 // -------------------------------------------------------------
 
+export const DEFAULT_MASTER_SUBSCRIPTION_CODES: SubscriptionCode[] = [
+  {
+    id: 'sub_vip_1m_master',
+    code: 'ZNV-VIP-1MONTH',
+    tier: 'one_month',
+    durationDays: 30,
+    createdAt: 1717000000000,
+    isRedeemed: false,
+    note: 'Master VIP 1-Month Access Code (Backup 1/3)'
+  },
+  {
+    id: 'sub_vip_1y_master',
+    code: 'ZNV-VIP-1YEAR',
+    tier: 'one_year',
+    durationDays: 365,
+    createdAt: 1717000000001,
+    isRedeemed: false,
+    note: 'Master VIP 1-Year Full Access Code (Backup 2/3)'
+  },
+  {
+    id: 'sub_vip_perm_master',
+    code: 'ZNV-VIP-LIFETIME',
+    tier: 'permanent',
+    durationDays: 0,
+    createdAt: 1717000000002,
+    isRedeemed: false,
+    note: 'Master VIP Lifetime Permanent Pass (Backup 3/3)'
+  }
+];
+
 export function getSubscriptionCodes(): SubscriptionCode[] {
   try {
     const raw = localStorage.getItem(SUBSCRIPTION_CODES_KEY);
     if (raw) {
-      return JSON.parse(raw);
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed;
+      }
     }
   } catch (e) {
     console.error('Failed to parse subscription codes:', e);
   }
-  return [];
+  // If no codes exist in storage, initialize with the 3 Master VIP codes
+  saveSubscriptionCodes(DEFAULT_MASTER_SUBSCRIPTION_CODES);
+  DEFAULT_MASTER_SUBSCRIPTION_CODES.forEach(code => {
+    saveSubscriptionCodeToFirebase(code).catch(() => {});
+  });
+  return DEFAULT_MASTER_SUBSCRIPTION_CODES;
+}
+
+export function restoreMasterSubscriptionCodes(): SubscriptionCode[] {
+  const current = getSubscriptionCodes();
+  const currentIds = new Set(current.map(c => c.id));
+  const currentCodes = new Set(current.map(c => c.code.toUpperCase()));
+  
+  const toAdd = DEFAULT_MASTER_SUBSCRIPTION_CODES.filter(
+    c => !currentIds.has(c.id) && !currentCodes.has(c.code.toUpperCase())
+  );
+  
+  const updated = [...toAdd, ...current];
+  saveSubscriptionCodes(updated);
+  toAdd.forEach(c => saveSubscriptionCodeToFirebase(c).catch(() => {}));
+  return updated;
 }
 
 export function saveSubscriptionCodes(codes: SubscriptionCode[]): void {

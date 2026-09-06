@@ -37,17 +37,63 @@ const USERS_COLLECTION = 'users';
 
 let firestoreQuotaExhausted = false;
 
-function checkQuotaError(err: any): boolean {
+type QuotaListener = (exhausted: boolean) => void;
+const quotaListeners = new Set<QuotaListener>();
+
+export function isFirestoreQuotaExhausted(): boolean {
+  return firestoreQuotaExhausted;
+}
+
+export function resetFirestoreQuotaStatus(): void {
+  firestoreQuotaExhausted = false;
+  notifyQuotaListeners();
+}
+
+export function onQuotaStatusChange(listener: QuotaListener): () => void {
+  quotaListeners.add(listener);
+  listener(firestoreQuotaExhausted);
+  return () => quotaListeners.delete(listener);
+}
+
+function notifyQuotaListeners() {
+  quotaListeners.forEach(cb => {
+    try { cb(firestoreQuotaExhausted); } catch (e) { console.error(e); }
+  });
+}
+
+export function checkQuotaError(err: any): boolean {
   const msg = err?.message || String(err || '');
-  if (err?.code === 'resource-exhausted' || msg.includes('resource-exhausted') || msg.includes('Quota limit exceeded')) {
+  if (
+    err?.code === 'resource-exhausted' || 
+    msg.includes('resource-exhausted') || 
+    msg.includes('Quota limit exceeded') ||
+    msg.includes('Quota exceeded')
+  ) {
     if (!firestoreQuotaExhausted) {
       firestoreQuotaExhausted = true;
+      notifyQuotaListeners();
       console.warn('Firestore quota limit reached. Operating in offline/local fallback mode.');
     }
     return true;
   }
   return false;
 }
+
+export const testFirestoreConnection = async (): Promise<{ connected: boolean; quotaExhausted: boolean; error?: string }> => {
+  try {
+    await getDoc(doc(db, 'system_settings', 'global_config'));
+    firestoreQuotaExhausted = false;
+    notifyQuotaListeners();
+    return { connected: true, quotaExhausted: false };
+  } catch (err: any) {
+    const isQuota = checkQuotaError(err);
+    return {
+      connected: false,
+      quotaExhausted: isQuota,
+      error: err?.message || String(err),
+    };
+  }
+};
 
 /**
  * Helper to recursively remove undefined values from objects before writing to Firestore
@@ -71,37 +117,58 @@ export function cleanForFirestore<T>(obj: T): T {
   return obj;
 }
 
+const pendingUserWrites = new Map<string, NodeJS.Timeout>();
+
 /**
  * Save or update complete user profile in Firebase Firestore
  */
 export const saveUserToFirebase = async (user: User): Promise<void> => {
   if (firestoreQuotaExhausted) return;
-  try {
-    const userRef = doc(db, USERS_COLLECTION, user.id);
-    const cleanUser: Record<string, any> = {
-      id: user.id,
-      username: user.username,
-      name: user.name,
-      email: user.email,
-      avatar: user.avatar,
-      age: user.age ?? null,
-      country: user.country ?? null,
-      isUnder18: user.isUnder18 ?? (user.age !== undefined ? user.age < 18 : false),
-      joinedAt: user.joinedAt || Date.now(),
-      createdAt: user.joinedAt || Date.now(),
-      subscription: user.subscription ? cleanForFirestore(user.subscription) : null,
-      watchLater: user.watchLater ? cleanForFirestore(user.watchLater) : [],
-      watchHistory: user.watchHistory ? cleanForFirestore(user.watchHistory) : [],
-      updatedAt: Date.now(),
-    };
-    if (user.password) {
-      cleanUser.password = user.password;
-    }
-    await setDoc(userRef, cleanForFirestore(cleanUser), { merge: true });
-  } catch (error) {
-    if (checkQuotaError(error)) return;
-    console.error('Error saving user to Firebase:', error);
+
+  // Debounce writes by 2 seconds to drastically reduce Firestore write operations and preserve daily quota
+  if (pendingUserWrites.has(user.id)) {
+    clearTimeout(pendingUserWrites.get(user.id)!);
   }
+
+  return new Promise((resolve) => {
+    const timeout = setTimeout(async () => {
+      pendingUserWrites.delete(user.id);
+      if (firestoreQuotaExhausted) {
+        resolve();
+        return;
+      }
+      try {
+        const userRef = doc(db, USERS_COLLECTION, user.id);
+        const cleanUser: Record<string, any> = {
+          id: user.id,
+          username: user.username,
+          name: user.name,
+          email: user.email,
+          avatar: user.avatar,
+          age: user.age ?? null,
+          country: user.country ?? null,
+          isUnder18: user.isUnder18 ?? (user.age !== undefined ? user.age < 18 : false),
+          joinedAt: user.joinedAt || Date.now(),
+          createdAt: user.joinedAt || Date.now(),
+          subscription: user.subscription ? cleanForFirestore(user.subscription) : null,
+          watchLater: user.watchLater ? cleanForFirestore(user.watchLater) : [],
+          watchHistory: user.watchHistory ? cleanForFirestore(user.watchHistory) : [],
+          updatedAt: Date.now(),
+        };
+        if (user.password) {
+          cleanUser.password = user.password;
+        }
+        await setDoc(userRef, cleanForFirestore(cleanUser), { merge: true });
+      } catch (error) {
+        if (!checkQuotaError(error)) {
+          console.error('Error saving user to Firebase:', error);
+        }
+      }
+      resolve();
+    }, 2000);
+
+    pendingUserWrites.set(user.id, timeout);
+  });
 };
 
 /**
@@ -207,7 +274,17 @@ export const getAllUsersFromFirebase = async (): Promise<User[]> => {
     const snap = await getDocs(usersRef);
     const users: User[] = [];
     snap.forEach((d) => {
-      users.push(d.data() as User);
+      if (d.id === 'zinovis_vip') {
+        // Permanently purge legacy demo user from Firebase Firestore
+        deleteDoc(d.ref).catch(() => {});
+        return;
+      }
+      const data = d.data() as User;
+      if (data.id === 'zinovis_vip' || data.username === 'alex_cinephile') {
+        deleteDoc(d.ref).catch(() => {});
+        return;
+      }
+      users.push(data);
     });
     return users;
   } catch (err) {
