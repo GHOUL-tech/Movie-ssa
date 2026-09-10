@@ -11,7 +11,8 @@ import {
   User as UserIcon,
   Film,
   Monitor,
-  Heart
+  Heart,
+  RefreshCw
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { SupportMessage } from '../types';
@@ -22,6 +23,20 @@ interface LiveSupportModalProps {
   onClose: () => void;
 }
 
+// Helper to get or create a persistent guest support ID
+const getPersistentGuestId = (): string => {
+  try {
+    let id = localStorage.getItem('zinovis_guest_support_id');
+    if (!id) {
+      id = `guest_${Math.random().toString(36).substring(2, 9)}_${Date.now().toString(36)}`;
+      localStorage.setItem('zinovis_guest_support_id', id);
+    }
+    return id;
+  } catch {
+    return 'guest_session';
+  }
+};
+
 export const LiveSupportModal: React.FC<LiveSupportModalProps> = ({ isOpen, onClose }) => {
   const { currentUser, isLoggedIn, openAuthModal } = useAuth();
   const [messages, setMessages] = useState<SupportMessage[]>([]);
@@ -29,16 +44,24 @@ export const LiveSupportModal: React.FC<LiveSupportModalProps> = ({ isOpen, onCl
   const [guestName, setGuestName] = useState('');
   const [guestEmail, setGuestEmail] = useState('');
   const [sending, setSending] = useState(false);
+  const [isTyping, setIsTyping] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Derive active userId
-  const effectiveUserId = currentUser?.id || (guestEmail ? `guest_${guestEmail.replace(/[^a-z0-9]/gi, '_')}` : 'guest_session');
+  const effectiveUserId = currentUser?.id || getPersistentGuestId();
 
   useEffect(() => {
     if (!isOpen) return;
 
     const unsubscribe = subscribeToUserSupportMessages(effectiveUserId, (msgs) => {
-      setMessages(msgs);
+      if (msgs && msgs.length > 0) {
+        setMessages((prev) => {
+          // Merge by ID to avoid duplicates while keeping optimistic messages
+          const existingIds = new Set(msgs.map(m => m.id));
+          const optimisticNotYetSynced = prev.filter(m => m.id.startsWith('temp_') && !existingIds.has(m.id));
+          return [...msgs, ...optimisticNotYetSynced].sort((a, b) => a.createdAt - b.createdAt);
+        });
+      }
     });
 
     return () => unsubscribe();
@@ -46,38 +69,106 @@ export const LiveSupportModal: React.FC<LiveSupportModalProps> = ({ isOpen, onCl
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  }, [messages, isTyping]);
 
   if (!isOpen) return null;
+
+  const triggerAutomatedAssistantReply = (userQuery: string, senderName: string, senderEmail: string) => {
+    const q = userQuery.toLowerCase();
+    let replyText = '';
+
+    if (q.includes('server') || q.includes('1080p') || q.includes('4k') || q.includes('hd') || q.includes('buffer') || q.includes('switch')) {
+      replyText = `Hi ${senderName}! To switch servers, click the "Server" dropdown located above the player controls. Server 1 & Server 2 provide fast 1080p Ultra HD streaming. If one server is slow in your region, switching to Server 2 or 3 will instantly resolve buffering!`;
+    } else if (q.includes('safe mode') || q.includes('under 18') || q.includes('18+') || q.includes('filter') || q.includes('parental')) {
+      replyText = `Hello! Under 18 Safe Mode filters out R-rated and 18+ content automatically based on the age you set in your profile. You can toggle this anytime in Account Settings -> Safe Mode Filter.`;
+    } else if (q.includes('subtitle') || q.includes('language') || q.includes('caption') || q.includes('audio')) {
+      replyText = `Great question! You can switch subtitles by clicking the "CC / Subtitles" icon inside the video player toolbar. We support English, Spanish, French, German, and Arabic multi-tracks.`;
+    } else if (q.includes('vip') || q.includes('subscription') || q.includes('code') || q.includes('pass') || q.includes('redeem')) {
+      replyText = `VIP Subscription passes unlock commercial-free, high-bitrate streaming. You can redeem your 16-character code by clicking your profile icon -> "Redeem Pass", or purchase one directly at our official shop!`;
+    } else if (q.includes('hi') || q.includes('hello') || q.includes('hey') || q.includes('help')) {
+      replyText = `Hello ${senderName}! Admin Rahin and the Zinovis team are here to help. What movie, series, or streaming feature can we assist you with today?`;
+    }
+
+    if (replyText) {
+      setIsTyping(true);
+      setTimeout(async () => {
+        setIsTyping(false);
+        const adminMsg: SupportMessage = {
+          id: `bot_reply_${Date.now()}`,
+          userId: effectiveUserId,
+          userName: 'Admin Rahin (Support Desk)',
+          userEmail: 'support@zinovis.tv',
+          message: replyText,
+          sender: 'admin',
+          createdAt: Date.now(),
+          read: true,
+        };
+
+        // Optimistically add
+        setMessages(prev => [...prev, adminMsg]);
+
+        // Send to backend
+        try {
+          await sendSupportMessageToBackend(adminMsg);
+        } catch {}
+      }, 1200);
+    }
+  };
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!inputText.trim()) return;
 
-    const senderName = currentUser?.name || guestName.trim() || 'Guest Viewer';
+    const senderName = currentUser?.name || currentUser?.username || guestName.trim() || 'Viewer';
     const senderEmail = currentUser?.email || guestEmail.trim() || 'guest@zinovis.tv';
-    const msg = inputText.trim();
+    const msgText = inputText.trim();
     setInputText('');
 
-    setSending(true);
-    await sendSupportMessageToBackend({
+    const tempId = `temp_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+    const newMsg: SupportMessage = {
+      id: tempId,
       userId: effectiveUserId,
       userName: senderName,
       userEmail: senderEmail,
       userAvatar: currentUser?.avatar,
-      message: msg,
+      message: msgText,
       sender: 'user',
       createdAt: Date.now(),
       read: false,
-    });
-    setSending(false);
+    };
+
+    // Optimistic instant UI update
+    setMessages(prev => [...prev, newMsg]);
+
+    setSending(true);
+    try {
+      await sendSupportMessageToBackend({
+        userId: effectiveUserId,
+        userName: senderName,
+        userEmail: senderEmail,
+        userAvatar: currentUser?.avatar,
+        message: msgText,
+        sender: 'user',
+        createdAt: Date.now(),
+        read: false,
+      });
+    } catch (err) {
+      console.warn('Live support dispatch notice:', err);
+    } finally {
+      setSending(false);
+    }
+
+    // Trigger intelligent instant reply if applicable
+    triggerAutomatedAssistantReply(msgText, senderName, senderEmail);
   };
 
   const handleQuickQuestion = async (prompt: string) => {
-    const senderName = currentUser?.name || guestName.trim() || 'Guest Viewer';
+    const senderName = currentUser?.name || currentUser?.username || guestName.trim() || 'Viewer';
     const senderEmail = currentUser?.email || guestEmail.trim() || 'guest@zinovis.tv';
 
-    await sendSupportMessageToBackend({
+    const tempId = `temp_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+    const newMsg: SupportMessage = {
+      id: tempId,
       userId: effectiveUserId,
       userName: senderName,
       userEmail: senderEmail,
@@ -86,7 +177,24 @@ export const LiveSupportModal: React.FC<LiveSupportModalProps> = ({ isOpen, onCl
       sender: 'user',
       createdAt: Date.now(),
       read: false,
-    });
+    };
+
+    setMessages(prev => [...prev, newMsg]);
+
+    try {
+      await sendSupportMessageToBackend({
+        userId: effectiveUserId,
+        userName: senderName,
+        userEmail: senderEmail,
+        userAvatar: currentUser?.avatar,
+        message: prompt,
+        sender: 'user',
+        createdAt: Date.now(),
+        read: false,
+      });
+    } catch {}
+
+    triggerAutomatedAssistantReply(prompt, senderName, senderEmail);
   };
 
   return (
@@ -96,7 +204,7 @@ export const LiveSupportModal: React.FC<LiveSupportModalProps> = ({ isOpen, onCl
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="p-4 border-b border-neutral-800 bg-neutral-950/80 flex items-center justify-between">
+        <div className="p-4 border-b border-neutral-800 bg-neutral-950/90 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-red-600 via-rose-500 to-pink-600 p-0.5 shadow-lg shadow-red-500/20 flex-shrink-0">
               <div className="w-full h-full bg-neutral-950 rounded-[14px] flex items-center justify-center">
@@ -106,9 +214,12 @@ export const LiveSupportModal: React.FC<LiveSupportModalProps> = ({ isOpen, onCl
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="text-sm font-black text-white tracking-wide">Zinovis Live Support</h3>
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+                <span className="flex h-2 w-2 relative">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                </span>
               </div>
-              <p className="text-[11px] text-neutral-400">Admin Rahin &amp; VIP Streamer Desk</p>
+              <p className="text-[11px] text-neutral-400">Admin Rahin &amp; Instant Assistance Desk</p>
             </div>
           </div>
 
@@ -183,7 +294,7 @@ export const LiveSupportModal: React.FC<LiveSupportModalProps> = ({ isOpen, onCl
                 className={`flex flex-col ${isAdmin ? 'items-start' : 'items-end'}`}
               >
                 <div className="flex items-center gap-1.5 mb-1 text-[10px] text-neutral-400">
-                  <span>{isAdmin ? 'Admin (Rahin)' : 'You'}</span>
+                  <span>{isAdmin ? 'Admin (Rahin)' : (msg.userName || 'You')}</span>
                   <span>•</span>
                   <span>{new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                 </div>
@@ -199,6 +310,23 @@ export const LiveSupportModal: React.FC<LiveSupportModalProps> = ({ isOpen, onCl
               </div>
             );
           })}
+
+          {/* Live Typing Indicator */}
+          {isTyping && (
+            <div className="flex flex-col items-start">
+              <div className="flex items-center gap-1.5 mb-1 text-[10px] text-neutral-400">
+                <span>Admin (Rahin)</span>
+                <span>•</span>
+                <span>typing...</span>
+              </div>
+              <div className="px-4 py-2.5 rounded-2xl text-xs bg-neutral-800 border border-neutral-700 text-neutral-300 flex items-center gap-1.5 rounded-tl-none">
+                <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-bounce" style={{ animationDelay: '0ms' }} />
+                <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-bounce" style={{ animationDelay: '150ms' }} />
+                <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-bounce" style={{ animationDelay: '300ms' }} />
+              </div>
+            </div>
+          )}
+
           <div ref={messagesEndRef} />
         </div>
 
@@ -224,3 +352,4 @@ export const LiveSupportModal: React.FC<LiveSupportModalProps> = ({ isOpen, onCl
     </div>
   );
 };
+

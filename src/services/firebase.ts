@@ -64,30 +64,18 @@ const CODES_COLLECTION = 'subscription_codes';
 const DEFAULT_SHOP_URL = 'https://unikagamingshopnew.vercel.app/';
 
 // ==========================================
-// RESILIENT QUOTA & STATUS ENGINE
+// RESILIENT STATUS ENGINE
 // ==========================================
 const QUOTA_STORAGE_KEY = 'zinovis_firestore_quota_exhausted_time';
-const getStoredQuotaTime = (): number => {
-  try {
-    const val = sessionStorage.getItem(QUOTA_STORAGE_KEY) || localStorage.getItem(QUOTA_STORAGE_KEY);
-    return val ? parseInt(val, 10) : 0;
-  } catch {
-    return 0;
-  }
-};
 
-let quotaExhaustedTimestamp = getStoredQuotaTime();
-// Keep quota exhausted state persistent across reloads if occurred recently (within 10 minutes)
-let firestoreQuotaExhausted = quotaExhaustedTimestamp > 0 && (Date.now() - quotaExhaustedTimestamp < 10 * 60 * 1000);
-let isNetworkDisabled = false;
+let quotaExhaustedTimestamp = 0;
+let firestoreQuotaExhausted = false;
 
-// If already known to be exhausted, disable network immediately to avoid backoff loop
-if (firestoreQuotaExhausted) {
-  try {
-    disableNetwork(db).catch(() => {});
-    isNetworkDisabled = true;
-  } catch {}
-}
+// Clear any stale local quota blocks to ensure live connections
+try {
+  sessionStorage.removeItem(QUOTA_STORAGE_KEY);
+  localStorage.removeItem(QUOTA_STORAGE_KEY);
+} catch {}
 
 type QuotaListener = (exhausted: boolean) => void;
 const quotaListeners = new Set<QuotaListener>();
@@ -103,12 +91,6 @@ export async function resetFirestoreQuotaStatus(): Promise<void> {
     sessionStorage.removeItem(QUOTA_STORAGE_KEY);
     localStorage.removeItem(QUOTA_STORAGE_KEY);
   } catch {}
-  if (isNetworkDisabled) {
-    try {
-      await enableNetwork(db);
-      isNetworkDisabled = false;
-    } catch {}
-  }
   notifyQuotaListeners();
 }
 
@@ -135,18 +117,6 @@ export function checkQuotaError(err: any): boolean {
   ) {
     firestoreQuotaExhausted = true;
     quotaExhaustedTimestamp = Date.now();
-    try {
-      sessionStorage.setItem(QUOTA_STORAGE_KEY, String(quotaExhaustedTimestamp));
-      localStorage.setItem(QUOTA_STORAGE_KEY, String(quotaExhaustedTimestamp));
-    } catch {}
-
-    if (!isNetworkDisabled) {
-      isNetworkDisabled = true;
-      try {
-        disableNetwork(db).catch(() => {});
-      } catch {}
-    }
-
     notifyQuotaListeners();
     return true;
   }
@@ -155,12 +125,6 @@ export function checkQuotaError(err: any): boolean {
 
 export const testFirestoreConnection = async (): Promise<{ connected: boolean; quotaExhausted: boolean; error?: string }> => {
   try {
-    if (isNetworkDisabled) {
-      try {
-        await enableNetwork(db);
-        isNetworkDisabled = false;
-      } catch {}
-    }
     const pingRef = doc(db, 'system_config', 'ping');
     await setDoc(pingRef, { pingAt: Date.now() }, { merge: true });
     await resetFirestoreQuotaStatus();
@@ -170,7 +134,7 @@ export const testFirestoreConnection = async (): Promise<{ connected: boolean; q
     return {
       connected: false,
       quotaExhausted: isQuota,
-      error: err?.message || String(err),
+      error: err?.message || 'Connection test failed',
     };
   }
 };
