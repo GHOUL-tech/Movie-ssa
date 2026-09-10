@@ -589,6 +589,43 @@ export const subscribeToUserSupportMessages = (userId: string, callback: (messag
   }
 };
 
+export const getAllSupportMessagesFromFirebase = async (): Promise<SupportMessage[]> => {
+  if (isFirestoreQuotaExhausted()) return [];
+  try {
+    const supportRef = collection(db, SUPPORT_COLLECTION);
+    const snap = await getDocs(supportRef);
+    const msgs: SupportMessage[] = [];
+    snap.forEach((d) => {
+      msgs.push(d.data() as SupportMessage);
+    });
+    msgs.sort((a, b) => a.createdAt - b.createdAt);
+    return msgs;
+  } catch (err) {
+    checkQuotaError(err);
+    return [];
+  }
+};
+
+export const getUserSupportMessagesFromFirebase = async (userId: string): Promise<SupportMessage[]> => {
+  if (!userId || isFirestoreQuotaExhausted()) return [];
+  try {
+    const supportRef = collection(db, SUPPORT_COLLECTION);
+    const snap = await getDocs(supportRef);
+    const msgs: SupportMessage[] = [];
+    snap.forEach((d) => {
+      const data = d.data() as SupportMessage;
+      if (data.userId === userId) {
+        msgs.push(data);
+      }
+    });
+    msgs.sort((a, b) => a.createdAt - b.createdAt);
+    return msgs;
+  } catch (err) {
+    checkQuotaError(err);
+    return [];
+  }
+};
+
 export const markSupportMessageRead = async (messageId: string): Promise<void> => {
   if (isFirestoreQuotaExhausted()) return;
   try {
