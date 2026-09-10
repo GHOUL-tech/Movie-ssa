@@ -309,17 +309,19 @@ export async function loginUserAsync(
     return { success: true, user: found };
   }
 
-  // If Firebase quota is already known to be exhausted, provide a helpful and honest explanation
-  if (isFirestoreQuotaExhausted()) {
-    return { 
-      success: false, 
-      error: 'Account not found locally, and cloud sync is temporarily paused for offline mode. If you created your account on this device, please verify your spelling.' 
-    };
-  }
-
   // 2. Query Firebase Firestore database
   try {
-    const remoteUser = await getUserFromFirebase(clean);
+    let remoteUser = await getUserFromFirebase(clean);
+    if (!remoteUser) {
+      // Fallback: check all users in Firebase in case of casing differences
+      const allRemotes = await getAllUsersFromFirebase();
+      remoteUser = allRemotes.find(
+        u => (u.id && u.id.toLowerCase() === clean) ||
+             (u.username && u.username.toLowerCase() === clean) ||
+             (u.email && u.email.toLowerCase() === clean)
+      ) || null;
+    }
+
     if (remoteUser) {
       if (password && remoteUser.password && remoteUser.password !== password) {
         return { success: false, error: 'Incorrect password. Please try again.' };
@@ -338,13 +340,6 @@ export async function loginUserAsync(
     }
   } catch (err) {
     console.error('Firebase login error:', err);
-  }
-
-  if (isFirestoreQuotaExhausted()) {
-    return { 
-      success: false, 
-      error: 'Account not found locally, and cloud sync is currently paused for offline mode.' 
-    };
   }
 
   return { success: false, error: 'User not found. Please check your ID, username, or email, or create a new account.' };

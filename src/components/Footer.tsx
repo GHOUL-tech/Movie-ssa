@@ -116,13 +116,23 @@ export const Footer: React.FC<FooterProps> = ({ onNavigateTab }) => {
 
         {/* Bottom Disclaimer */}
         <div className="pt-6 border-t border-neutral-800/60 flex flex-col sm:flex-row items-center justify-between text-xs text-neutral-400 gap-4">
-          <p>© {new Date().getFullYear()} Zinovis Streaming Service. Powered by TMDB API &amp; Firebase.</p>
+          <p className="flex items-center gap-1">
+            <button
+              onClick={handleAdminAccess}
+              className="text-neutral-400 hover:text-red-500 hover:bg-neutral-800/80 px-1 py-0.5 rounded transition-all cursor-pointer font-bold select-none focus:outline-none focus:ring-1 focus:ring-red-500/50"
+              title="Admin Portal Access Point (©)"
+              aria-label="Admin Access Point"
+            >
+              ©
+            </button>
+            <span>{new Date().getFullYear()} Zinovis Streaming Service. Powered by TMDB API &amp; Firebase.</span>
+          </p>
           <div className="flex items-center gap-1.5 text-[11px]">
             <span>Crafted with</span>
             <button
               onClick={handleAdminAccess}
-              className="p-1 rounded-md hover:bg-neutral-800 transition-all group"
-              title="Admin Portal Access Point (Love Emoji ❤️)"
+              className="p-1 rounded-md hover:bg-neutral-800 transition-all group cursor-pointer"
+              title="Admin Portal Access Point (© / ❤️)"
             >
               <Heart className="w-3.5 h-3.5 text-red-500 fill-current group-hover:scale-125 transition-transform" />
             </button>

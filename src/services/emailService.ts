@@ -1,4 +1,5 @@
 import emailjs from '@emailjs/browser';
+import { saveOtpToFirebase } from './firebase';
 
 export interface EmailJsConfig {
   serviceId: string;
@@ -34,6 +35,7 @@ export interface SendOtpParams {
   to_email: string;
   to_name: string;
   otp_code: string;
+  userId?: string;
 }
 
 export interface SendOtpResult {
@@ -41,15 +43,11 @@ export interface SendOtpResult {
   isSimulated?: boolean;
   error?: string;
   message?: string;
+  otpCode?: string;
 }
 
 /**
- * Draft Email Template for EmailJS:
- * This is the exact template you can copy and paste into your EmailJS Template Editor.
- */
-/**
- * Draft Email Template for EmailJS (Dark / Code / Terminal Style):
- * Copy and paste into your EmailJS Template Editor.
+ * Draft Email Template for EmailJS (Dark / Terminal Style)
  */
 export const EMAILJS_CODE_DRAFT_TEMPLATE = {
   subject: '[ZINOVIS AUTH] Verification Code: {{otp_code}}',
@@ -71,7 +69,6 @@ export const EMAILJS_CODE_DRAFT_TEMPLATE = {
 </head>
 <body style="margin: 0; padding: 24px; background-color: #0c0c0e; font-family: 'JetBrains Mono', 'Fira Code', Consolas, Monaco, 'Courier New', monospace; color: #e2e8f0;">
   <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="max-width: 580px; margin: 0 auto; background-color: #131318; border: 1px solid #272732; border-radius: 16px; overflow: hidden; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7);">
-    <!-- Terminal Header -->
     <tr>
       <td style="padding: 16px 20px; background-color: #1a1a24; border-bottom: 1px solid #272732;">
         <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%">
@@ -88,20 +85,15 @@ export const EMAILJS_CODE_DRAFT_TEMPLATE = {
         </table>
       </td>
     </tr>
-
-    <!-- Terminal Content Area -->
     <tr>
       <td style="padding: 28px 24px;">
         <div style="color: #ef4444; font-size: 18px; font-weight: 800; margin-bottom: 12px; letter-spacing: -0.5px;">
           &gt; ZINOVIS_HD_STREAMING // PASS_RESET
         </div>
-        
         <p style="font-size: 13px; line-height: 1.6; color: #94a3b8; margin: 0 0 20px 0;">
           Target Account: <span style="color: #38bdf8; font-weight: 600;">{{to_name}}</span> (<span style="color: #f1f5f9;">{{to_email}}</span>)<br>
           Status: <span style="color: #4ade80;">ONE_TIME_CODE_REQUESTED</span>
         </p>
-
-        <!-- Code Block -->
         <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #09090d; border: 1px solid #334155; border-radius: 12px; margin: 20px 0;">
           <tr>
             <td style="padding: 24px; text-align: center;">
@@ -117,14 +109,11 @@ export const EMAILJS_CODE_DRAFT_TEMPLATE = {
             </td>
           </tr>
         </table>
-
         <p style="font-size: 12px; line-height: 1.6; color: #64748b; margin: 20px 0 0 0;">
           If you did not initiate this authentication cycle, please ignore this payload. Existing credentials remain safe and encrypted.
         </p>
       </td>
     </tr>
-
-    <!-- Terminal Footer -->
     <tr>
       <td style="padding: 16px 24px; background-color: #0c0c0e; border-top: 1px solid #272732; font-size: 11px; color: #475569; text-align: center;">
         Support channel: <span style="color: #94a3b8;">{{support_email}}</span> | © 2026 Zinovis Media Engine
@@ -155,18 +144,38 @@ Support: {{support_email}}
 export const EMAILJS_DRAFT_TEMPLATE = EMAILJS_CODE_DRAFT_TEMPLATE;
 
 /**
- * Send OTP Code via EmailJS
+ * Send & Persist OTP Code via Backend, Firebase & EmailJS
  */
 export async function sendOtpViaEmail(params: SendOtpParams): Promise<SendOtpResult> {
-  const { to_email, to_name, otp_code } = params;
+  const { to_email, to_name, otp_code, userId } = params;
+  const cleanEmail = to_email.trim().toLowerCase();
+
+  // 1. Always safeguard in Firebase Firestore `otp_verifications` collection
+  saveOtpToFirebase(cleanEmail, otp_code, userId).catch(err => {
+    console.warn('Firebase OTP save warning:', err);
+  });
+
+  // 2. Also register in Backend Express Server if available
+  try {
+    fetch('/api/auth/send-otp', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: cleanEmail,
+        userName: to_name,
+        userId: userId,
+      })
+    }).catch(() => {});
+  } catch {}
+
+  // 3. If EmailJS is configured, send live email
   const { serviceId, templateId, publicKey } = getEmailJsConfig();
 
-  // If EmailJS credentials are provided, attempt real email delivery
   if (serviceId && templateId && publicKey) {
     try {
       const templateParams = {
-        to_email: to_email.trim(),
-        to_name: to_name || to_email.split('@')[0],
+        to_email: cleanEmail,
+        to_name: to_name || cleanEmail.split('@')[0],
         otp_code: otp_code,
         app_name: 'Zinovis HD Streaming',
         expiry_time: '10 minutes',
@@ -184,24 +193,27 @@ export async function sendOtpViaEmail(params: SendOtpParams): Promise<SendOtpRes
         return {
           success: true,
           isSimulated: false,
-          message: `Verification code successfully sent to ${to_email}`,
+          otpCode: otp_code,
+          message: `Verification code successfully sent to ${cleanEmail}`,
         };
       }
     } catch (err: any) {
-      console.warn('EmailJS live send encountered an error, activating secure preview fallback:', err);
+      console.warn('EmailJS delivery fallback to direct OTP screen preview:', err);
       return {
         success: true,
         isSimulated: true,
-        error: err.message || 'EmailJS live send failed',
-        message: `Verification code generated for ${to_email}`,
+        otpCode: otp_code,
+        error: err?.message || 'EmailJS service unavailable',
+        message: `Verification code generated for ${cleanEmail}`,
       };
     }
   }
 
-  // Fallback mode when EmailJS credentials are not configured in environment
+  // Fallback demo mode when EmailJS is unconfigured
   return {
     success: true,
     isSimulated: true,
-    message: `Verification code generated for ${to_email} (EmailJS demo mode)`,
+    otpCode: otp_code,
+    message: `Verification code generated for ${cleanEmail} (Instant verification ready)`,
   };
 }

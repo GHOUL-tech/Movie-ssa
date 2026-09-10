@@ -334,7 +334,7 @@ function AppContent() {
     {/* Global Auth Modal */}
     <AuthModal />
 
-    {/* Admin Login Modal (Triggered by Love Emoji ❤️) */}
+    {/* Admin Login Modal (Triggered by Copyright Symbol © in Footer) */}
     <AdminLoginModal
       isOpen={isAdminModalOpen}
       onClose={closeAdminModal}

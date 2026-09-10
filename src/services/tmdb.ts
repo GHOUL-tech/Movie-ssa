@@ -27,7 +27,8 @@ async function fetchFromApi(endpoint: string, params: Record<string, string> = {
 
   try {
     const res = await fetch(proxyUrl);
-    if (res.ok) {
+    const contentType = res.headers.get('content-type') || '';
+    if (res.ok && contentType.includes('application/json')) {
       return await res.json();
     }
   } catch (e) {

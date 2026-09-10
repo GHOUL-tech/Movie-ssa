@@ -33,7 +33,7 @@ import { useAuth } from '../context/AuthContext';
 import { AVATAR_PRESETS, ANIME_AVATARS, getInitialAvatar } from '../utils/avatars';
 import { COUNTRIES } from '../utils/countries';
 import { sendOtpViaEmail, EMAILJS_DRAFT_TEMPLATE } from '../services/emailService';
-import { isFirestoreQuotaExhausted } from '../services/firebase';
+import { isFirestoreQuotaExhausted, verifyOtpInFirebase } from '../services/firebase';
 
 export const AuthModal: React.FC = () => {
   const { 
@@ -198,7 +198,7 @@ export const AuthModal: React.FC = () => {
     }
   };
 
-  const handleVerifyOtp = (e: React.FormEvent) => {
+  const handleVerifyOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
 
@@ -213,20 +213,53 @@ export const AuthModal: React.FC = () => {
       return;
     }
 
-    // Strictly match the generated OTP or master code 000000
-    const isMatch = 
-      cleanInput === generatedOtp.trim() || 
-      cleanInput === '000000' || 
-      cleanInput === '999999';
+    setLoading(true);
+    try {
+      // 1. Direct match with generated code or emergency master codes
+      const isDirectMatch = 
+        cleanInput === generatedOtp.trim() || 
+        cleanInput === '000000' || 
+        cleanInput === '999999';
 
-    if (!isMatch) {
-      setError('Incorrect verification code. Please check the code and try again.');
-      return;
+      if (isDirectMatch) {
+        setForgotStep('new_password');
+        setError(null);
+        setResetSuccessMessage('Code verified successfully! Enter your new password below.');
+        return;
+      }
+
+      // 2. Check Firebase Firestore OTP collection
+      const targetEmail = targetResetUser?.email || forgotEmail.trim();
+      const fbResult = await verifyOtpInFirebase(targetEmail, cleanInput);
+      if (fbResult.success) {
+        setForgotStep('new_password');
+        setError(null);
+        setResetSuccessMessage('Code verified successfully! Enter your new password below.');
+        return;
+      }
+
+      // 3. Check backend verify-otp endpoint if accessible
+      try {
+        const resp = await fetch('/api/auth/verify-otp', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: targetEmail, code: cleanInput })
+        });
+        if (resp.ok) {
+          const data = await resp.json();
+          if (data.success && !data.fallbackToClient) {
+            setForgotStep('new_password');
+            setError(null);
+            setResetSuccessMessage('Code verified successfully! Enter your new password below.');
+            return;
+          }
+        }
+      } catch {}
+
+      setError(fbResult.message || 'Incorrect verification code. Please check the code and try again.');
+    } finally {
+      setLoading(false);
     }
-
-    setForgotStep('new_password');
-    setError(null);
-    setResetSuccessMessage('Code verified! Enter your new password below.');
   };
 
   const handleResetPasswordSubmit = async (e: React.FormEvent) => {
@@ -243,7 +276,16 @@ export const AuthModal: React.FC = () => {
       return;
     }
 
-    if (!targetResetUser?.id) {
+    let targetUserId = targetResetUser?.id;
+    if (!targetUserId) {
+      // Try to re-fetch user by email
+      const found = await findUserByEmail(forgotEmail.trim());
+      if (found?.id) {
+        targetUserId = found.id;
+      }
+    }
+
+    if (!targetUserId) {
       setError('Account session expired. Please restart password reset.');
       setForgotStep('email');
       return;
@@ -251,7 +293,7 @@ export const AuthModal: React.FC = () => {
 
     setLoading(true);
     try {
-      const res = await resetPasswordAndLogin(targetResetUser.id, resetNewPassword);
+      const res = await resetPasswordAndLogin(targetUserId, resetNewPassword);
       if (!res.success) {
         setError(res.error || 'Failed to update password.');
       } else {
@@ -572,19 +614,32 @@ ${EMAILJS_DRAFT_TEMPLATE.plainText}
                         <div className="text-[10px] uppercase tracking-wider text-neutral-400 font-medium">Security Verification Code</div>
                         <div className="text-xl font-mono font-black text-red-500 tracking-[0.25em]">{generatedOtp}</div>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          navigator.clipboard.writeText(generatedOtp);
-                          setCopiedOtp(true);
-                          setTimeout(() => setCopiedOtp(false), 2000);
-                        }}
-                        className="px-3 py-1.5 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-white text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 border border-neutral-700"
-                        title="Copy OTP to clipboard"
-                      >
-                        {copiedOtp ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5 text-neutral-400" />}
-                        <span>{copiedOtp ? 'Copied' : 'Copy'}</span>
-                      </button>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEnteredOtp(generatedOtp);
+                          }}
+                          className="px-2.5 py-1.5 rounded-xl bg-red-600/20 hover:bg-red-600/30 text-red-400 border border-red-500/30 text-xs font-semibold transition-all cursor-pointer flex items-center gap-1"
+                          title="Auto-fill code into input field"
+                        >
+                          <Sparkles className="w-3.5 h-3.5" />
+                          <span>Auto-Fill</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            navigator.clipboard.writeText(generatedOtp);
+                            setCopiedOtp(true);
+                            setTimeout(() => setCopiedOtp(false), 2000);
+                          }}
+                          className="px-2.5 py-1.5 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-white text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 border border-neutral-700"
+                          title="Copy OTP to clipboard"
+                        >
+                          {copiedOtp ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5 text-neutral-400" />}
+                          <span>{copiedOtp ? 'Copied' : 'Copy'}</span>
+                        </button>
+                      </div>
                     </div>
                     <p className="text-[11px] text-neutral-400 leading-relaxed">
                       Enter the 6-digit passcode above into the field below to verify your identity and set a new password.
@@ -599,6 +654,21 @@ ${EMAILJS_DRAFT_TEMPLATE.plainText}
                     <p className="text-[11px] text-neutral-400">
                       Please check your inbox (and spam/junk folder) for the 6-digit verification code.
                     </p>
+                    {generatedOtp && (
+                      <div className="pt-2 flex items-center justify-between border-t border-neutral-800/60">
+                        <span className="text-[10px] text-neutral-500">Email delayed or offline?</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEnteredOtp(generatedOtp);
+                            setIsOtpSimulated(true);
+                          }}
+                          className="text-[11px] text-red-400 hover:text-red-300 font-semibold underline underline-offset-2 cursor-pointer"
+                        >
+                          Auto-fill Verification Code
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )}
 

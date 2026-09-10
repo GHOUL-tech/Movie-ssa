@@ -156,10 +156,10 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
         </form>
 
         <div className="mt-6 pt-4 border-t border-neutral-800/80 text-center">
-          <p className="text-[11px] text-neutral-400 flex items-center justify-center gap-1">
-            <span>Access point initiated via</span>
-            <Heart className="w-3 h-3 text-red-500 fill-current inline" />
-            <span>Love Emoji Portal</span>
+          <p className="text-[11px] text-neutral-400 flex items-center justify-center gap-1.5">
+            <span>Admin Access Point:</span>
+            <span className="font-bold text-red-400 bg-neutral-800 px-1.5 py-0.5 rounded border border-neutral-700/60">©</span>
+            <span>in footer</span>
           </p>
         </div>
       </div>

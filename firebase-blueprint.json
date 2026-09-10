@@ -1,8 +1,10 @@
 {
   "entities": {
     "User": {
-      "collection": "users",
-      "fields": {
+      "title": "User",
+      "description": "User account profile and watch lists",
+      "type": "object",
+      "properties": {
         "id": { "type": "string", "description": "Unique user account ID" },
         "username": { "type": "string", "description": "Unique username" },
         "name": { "type": "string", "description": "Display name" },
@@ -16,11 +18,28 @@
         "watchLater": { "type": "array", "description": "List of saved movies and series" },
         "watchHistory": { "type": "array", "description": "History of watched titles" },
         "updatedAt": { "type": "number", "description": "Last update timestamp" }
-      }
+      },
+      "required": ["id", "username", "name", "email"]
+    },
+    "OtpVerification": {
+      "title": "OtpVerification",
+      "description": "One-time password verification for secure authentication and password reset",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string", "description": "Target email address" },
+        "code": { "type": "string", "description": "6-digit OTP code" },
+        "userId": { "type": "string", "description": "Associated user account ID" },
+        "expiresAt": { "type": "number", "description": "Expiration timestamp in ms" },
+        "createdAt": { "type": "number", "description": "Generation timestamp in ms" },
+        "verified": { "type": "boolean", "description": "Whether the code has been successfully verified" }
+      },
+      "required": ["email", "code", "expiresAt", "createdAt"]
     },
     "SupportMessage": {
-      "collection": "support_messages",
-      "fields": {
+      "title": "SupportMessage",
+      "description": "Support chat messages between users and staff",
+      "type": "object",
+      "properties": {
         "id": { "type": "string", "description": "Unique message ID" },
         "userId": { "type": "string", "description": "User ID" },
         "userName": { "type": "string", "description": "User display name" },
@@ -30,29 +49,58 @@
         "sender": { "type": "string", "description": "Message sender: user or admin" },
         "createdAt": { "type": "number", "description": "Creation timestamp" },
         "read": { "type": "boolean", "description": "Whether message has been read" }
-      }
+      },
+      "required": ["id", "userId", "message", "sender", "createdAt"]
     },
     "SubscriptionCode": {
-      "collection": "subscription_codes",
-      "fields": {
+      "title": "SubscriptionCode",
+      "description": "Redeemable VIP subscription codes",
+      "type": "object",
+      "properties": {
         "id": { "type": "string", "description": "Unique subscription code document ID" },
         "code": { "type": "string", "description": "Redeemable VIP subscription pass code string" },
         "tier": { "type": "string", "description": "Subscription tier (one_month, six_months, one_year, permanent)" },
-        "durationDays": { "type": "number", "description": "Duration in days (0 for permanent)" },
+        "durationDays": { "type": "number", "description": "Duration in days" },
         "createdAt": { "type": "number", "description": "Creation timestamp" },
         "isRedeemed": { "type": "boolean", "description": "Whether this code has already been redeemed" },
         "note": { "type": "string", "description": "Admin note or batch tag" },
         "redeemedAt": { "type": "number", "description": "Timestamp when redeemed" },
         "redeemedBy": { "type": "object", "description": "Information about the user who redeemed the code" }
-      }
+      },
+      "required": ["id", "code", "tier", "createdAt"]
     },
     "SystemConfig": {
-      "collection": "system_config",
-      "fields": {
+      "title": "SystemConfig",
+      "description": "Global streaming platform configuration",
+      "type": "object",
+      "properties": {
         "subscriptionRequired": { "type": "boolean", "description": "Whether subscription is globally required to play streams" },
         "shopUrl": { "type": "string", "description": "Official shop URL where users can buy subscription pass codes" },
         "updatedAt": { "type": "number", "description": "Last settings update timestamp" }
-      }
+      },
+      "required": ["subscriptionRequired", "shopUrl"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User account profiles and personalized lists"
+    },
+    "/otp_verifications/{email}": {
+      "schema": "OtpVerification",
+      "description": "One-time passcode records for secure password resets"
+    },
+    "/support_messages/{messageId}": {
+      "schema": "SupportMessage",
+      "description": "Live support chat messages"
+    },
+    "/subscription_codes/{codeId}": {
+      "schema": "SubscriptionCode",
+      "description": "Generated VIP subscription passcodes"
+    },
+    "/system_config/{configId}": {
+      "schema": "SystemConfig",
+      "description": "Platform global configuration documents"
     }
   }
 }
