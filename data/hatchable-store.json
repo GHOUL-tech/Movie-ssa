@@ -1,0 +1,41 @@
+{
+  "users": {},
+  "settings": {
+    "subscriptionRequired": false,
+    "shopUrl": "https://unikagamingshopnew.vercel.app/",
+    "backendProvider": "hatchable",
+    "updatedAt": 1789064822060
+  },
+  "codes": [
+    {
+      "id": "hatchable-code-lifetime-1",
+      "code": "ZINOVIS-LIFETIME-VIP",
+      "tier": "permanent",
+      "durationDays": 0,
+      "createdAt": 1789064629143,
+      "isRedeemed": false,
+      "note": "Master Permanent VIP Key (Hatchable)"
+    },
+    {
+      "id": "hatchable-code-month-1",
+      "code": "STREAM-FREE-30",
+      "tier": "one_month",
+      "durationDays": 30,
+      "createdAt": 1789064629143,
+      "isRedeemed": false,
+      "note": "1 Month Complimentary Pass (Hatchable)"
+    }
+  ],
+  "supportMessages": [
+    {
+      "id": "welcome-msg-1",
+      "userId": "system",
+      "userName": "Zinovis AI Concierge",
+      "userEmail": "support@zinovis.tv",
+      "message": "Welcome to Zinovis! Our Hatchable backend is active, offering unlimited bandwidth and zero-quota streaming.",
+      "sender": "admin",
+      "createdAt": 1789064629143,
+      "read": true
+    }
+  ]
+}

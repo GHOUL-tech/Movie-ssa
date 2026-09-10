@@ -45,20 +45,33 @@ import {
   Eye,
   EyeOff,
   Download,
-  Info
+  Info,
+  Database,
+  Server,
+  HardDrive,
+  Layers,
+  Activity
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { User, SupportMessage, MediaItem, WatchHistoryItem, SubscriptionCode, SubscriptionTier, UserSubscription } from '../types';
 import { 
-  getAllUsersFromFirebase, 
-  deleteUserFromFirebase, 
-  sendSupportMessageToFirebase, 
+  getAllUsersFromBackend, 
+  deleteUserFromBackend, 
+  sendSupportMessageToBackend, 
   subscribeToAllSupportMessages,
   subscribeToSubscriptionCodes,
-  saveSubscriptionCodeToFirebase,
-  deleteSubscriptionCodeFromFirebase,
-  saveUserToFirebase,
+  saveSubscriptionCodeToBackend,
+  deleteSubscriptionCodeFromBackend,
+  saveUserToBackend,
+  testBackendConnection,
+  BackendProvider
+} from '../services/backendService';
+import { 
+  syncClientDataToHatchable,
+  getHatchableStatus
+} from '../services/hatchable';
+import { 
   isFirestoreQuotaExhausted,
   onQuotaStatusChange,
   testFirestoreConnection
@@ -96,6 +109,8 @@ export const AdminPanel: React.FC = () => {
     isSubscriptionRequired, 
     setIsSubscriptionRequired, 
     shopUrl,
+    backendProvider,
+    setBackendProvider,
     refreshUserData 
   } = useAuth();
   const navigate = useNavigate();
@@ -173,19 +188,20 @@ export const AdminPanel: React.FC = () => {
     }
   }, [isAdmin, navigate]);
 
-  // Load all users from Firebase and fallback to local
+  const [isSyncingHatchable, setIsSyncingHatchable] = useState(false);
+  const [syncHatchableResult, setSyncHatchableResult] = useState<string | null>(null);
+
+  // Load all users from active Backend (Hatchable or Firebase) and fallback to local
   const loadUsers = async () => {
     setLoadingUsers(true);
     try {
       const localUsers = getAllUsers();
       let remoteUsers: User[] = [];
 
-      if (!isFirestoreQuotaExhausted()) {
-        try {
-          remoteUsers = await getAllUsersFromFirebase();
-        } catch (err) {
-          console.warn('Failed to load remote users:', err);
-        }
+      try {
+        remoteUsers = await getAllUsersFromBackend();
+      } catch (err) {
+        console.warn('Failed to load remote users:', err);
       }
       
       // Merge unique users by id
@@ -194,9 +210,8 @@ export const AdminPanel: React.FC = () => {
       
       localUsers.forEach(u => {
         userMap.set(u.id, u);
-        // Only attempt to sync local users back to Firebase if remote users were successfully fetched and quota is healthy
-        if (remoteUsers.length > 0 && !remoteIds.has(u.id) && !isFirestoreQuotaExhausted()) {
-          saveUserToFirebase(u).catch(console.error);
+        if (remoteUsers.length > 0 && !remoteIds.has(u.id)) {
+          saveUserToBackend(u).catch(console.error);
         }
       });
       remoteUsers.forEach(u => userMap.set(u.id, u));
@@ -226,15 +241,19 @@ export const AdminPanel: React.FC = () => {
     setTestingConnection(true);
     setConnectionTestResult(null);
     try {
-      const res = await testFirestoreConnection();
-      setQuotaExhausted(res.quotaExhausted);
+      const res = await testBackendConnection();
       if (res.connected) {
-        setConnectionTestResult({ success: true, message: 'Firebase Firestore is connected! Daily quota is active and healthy.' });
+        setConnectionTestResult({ 
+          success: true, 
+          message: `${res.provider === 'hatchable' ? 'Hatchable High-Performance Backend' : 'Firebase Cloud Firestore'} is connected! Status: ${res.quotaStatus}${res.latency ? ` (${res.latency})` : ''}` 
+        });
+        setQuotaExhausted(false);
         loadUsers();
       } else if (res.quotaExhausted) {
+        setQuotaExhausted(true);
         setConnectionTestResult({ 
           success: false, 
-          message: 'Firebase Quota Exceeded (resource-exhausted). Free tier daily read/write quota reached. Resets at 00:00 UTC.' 
+          message: 'Firebase Quota Exceeded (resource-exhausted). Switch to Hatchable backend for unlimited quota.' 
         });
       } else {
         setConnectionTestResult({ success: false, message: res.error || 'Connection failed.' });
@@ -243,6 +262,24 @@ export const AdminPanel: React.FC = () => {
       setConnectionTestResult({ success: false, message: err?.message || 'Connection test failed.' });
     } finally {
       setTestingConnection(false);
+    }
+  };
+
+  const handleSyncToHatchable = async () => {
+    setIsSyncingHatchable(true);
+    setSyncHatchableResult(null);
+    try {
+      const res = await syncClientDataToHatchable();
+      if (res.success) {
+        setSyncHatchableResult(`Successfully synced ${res.usersSynced} user(s) and ${res.codesSynced} subscription code(s) to Hatchable!`);
+        loadUsers();
+      } else {
+        setSyncHatchableResult(`Sync failed: ${res.error}`);
+      }
+    } catch (e: any) {
+      setSyncHatchableResult(`Sync error: ${e.message}`);
+    } finally {
+      setIsSyncingHatchable(false);
     }
   };
 
@@ -345,9 +382,9 @@ export const AdminPanel: React.FC = () => {
       const codeMap = new Map<string, SubscriptionCode>();
       localCodes.forEach(c => {
         codeMap.set(c.id, c);
-        // Sync local code to Firebase if it's missing (e.g., due to previous quota limit)
+        // Sync local code to backend if it's missing (e.g., due to previous quota limit)
         if (!remoteIds.has(c.id)) {
-          saveSubscriptionCodeToFirebase(c).catch(console.error);
+          saveSubscriptionCodeToBackend(c).catch(console.error);
         }
       });
       remoteCodes.forEach(c => codeMap.set(c.id, c));
@@ -498,7 +535,7 @@ export const AdminPanel: React.FC = () => {
     updatedUsers[userIdx] = updatedUser;
     setUsers(updatedUsers);
     saveUsersLocally(updatedUsers);
-    await saveUserToFirebase(updatedUser);
+    await saveUserToBackend(updatedUser);
     if (inspectingUser?.id === userId) {
       setInspectingUser(updatedUser);
     }
@@ -515,7 +552,7 @@ export const AdminPanel: React.FC = () => {
     updatedUsers[userIdx] = updatedUser;
     setUsers(updatedUsers);
     saveUsersLocally(updatedUsers);
-    await saveUserToFirebase(updatedUser);
+    await saveUserToBackend(updatedUser);
     if (inspectingUser?.id === userId) {
       setInspectingUser(updatedUser);
     }
@@ -732,7 +769,7 @@ export const AdminPanel: React.FC = () => {
     const text = replyText.trim();
     setReplyText('');
 
-    await sendSupportMessageToFirebase({
+    await sendSupportMessageToBackend({
       userId: selectedUserForChat,
       userName,
       userEmail,
@@ -858,40 +895,116 @@ export const AdminPanel: React.FC = () => {
       {/* Main Content Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-8 space-y-8">
         
-        {/* Firebase Backend Diagnostics & Quota Monitor */}
-        <div className={`p-4 sm:p-5 rounded-3xl border transition-all ${
-          quotaExhausted 
-            ? 'bg-amber-500/10 border-amber-500/30 text-amber-200' 
-            : 'bg-neutral-900/60 border-neutral-800 text-neutral-300'
-        }`}>
+        {/* Backend Infrastructure & Provider Control Panel */}
+        <div className="p-4 sm:p-5 rounded-3xl border border-neutral-800 bg-neutral-900/70 text-neutral-300 shadow-xl space-y-4">
+          <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 pb-3 border-b border-neutral-800/80">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 rounded-2xl bg-red-600/20 text-red-400 border border-red-500/30">
+                <Server className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-sm sm:text-base font-bold text-white flex items-center gap-2">
+                  <span>Backend Infrastructure</span>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-neutral-800 text-neutral-300 border border-neutral-700">
+                    Active: {backendProvider === 'hatchable' ? 'Hatchable (Primary)' : 'Firebase (Legacy)'}
+                  </span>
+                </h3>
+                <p className="text-xs text-neutral-400 mt-0.5">
+                  Select your active storage engine. Hatchable provides unlimited quota and zero rate limits.
+                </p>
+              </div>
+            </div>
+
+            {/* Provider Switcher Buttons */}
+            <div className="flex items-center gap-2 p-1 rounded-2xl bg-neutral-950 border border-neutral-800 w-full sm:w-auto">
+              <button
+                type="button"
+                onClick={() => {
+                  setBackendProvider('hatchable');
+                  loadUsers();
+                }}
+                className={`flex-1 sm:flex-initial px-3.5 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                  backendProvider === 'hatchable'
+                    ? 'bg-gradient-to-r from-red-600 to-rose-600 text-white shadow-md shadow-red-600/30'
+                    : 'text-neutral-400 hover:text-white hover:bg-neutral-900'
+                }`}
+              >
+                <Server className="w-3.5 h-3.5" />
+                <span>Hatchable Backend</span>
+                {backendProvider === 'hatchable' && (
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setBackendProvider('firebase');
+                  loadUsers();
+                }}
+                className={`flex-1 sm:flex-initial px-3.5 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                  backendProvider === 'firebase'
+                    ? 'bg-amber-600 text-white shadow-md shadow-amber-600/30'
+                    : 'text-neutral-400 hover:text-white hover:bg-neutral-900'
+                }`}
+              >
+                <Database className="w-3.5 h-3.5" />
+                <span>Firebase Firestore</span>
+                {backendProvider === 'firebase' && (
+                  <span className={`w-2 h-2 rounded-full ${quotaExhausted ? 'bg-amber-400' : 'bg-emerald-400'}`} />
+                )}
+              </button>
+            </div>
+          </div>
+
+          {/* Provider Specific Status and Action Bar */}
           <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
             <div className="flex items-start sm:items-center gap-3">
               <div className={`w-3 h-3 rounded-full mt-1 sm:mt-0 flex-shrink-0 ${
-                quotaExhausted ? 'bg-amber-400 animate-pulse' : 'bg-emerald-400'
+                backendProvider === 'hatchable'
+                  ? 'bg-emerald-400'
+                  : quotaExhausted ? 'bg-amber-400 animate-pulse' : 'bg-emerald-400'
               }`} />
               <div>
                 <div className="flex items-center gap-2 flex-wrap">
-                  <h3 className="text-sm sm:text-base font-bold text-white flex items-center gap-1.5">
-                    Firebase Cloud Database:
-                    <span className={quotaExhausted ? 'text-amber-400' : 'text-emerald-400'}>
-                      {quotaExhausted ? 'Offline Mode Active (Daily Quota Reached)' : 'Connected & Healthy'}
+                  <h4 className="text-xs sm:text-sm font-bold text-white flex items-center gap-1.5">
+                    {backendProvider === 'hatchable' ? 'Hatchable High-Throughput Engine:' : 'Firebase Cloud Database:'}
+                    <span className={backendProvider === 'hatchable' ? 'text-emerald-400' : (quotaExhausted ? 'text-amber-400' : 'text-emerald-400')}>
+                      {backendProvider === 'hatchable' 
+                        ? 'Active & Unlimited (Zero Quota Limits)' 
+                        : (quotaExhausted ? 'Offline Mode Active (Daily Quota Reached)' : 'Connected & Healthy')}
                     </span>
-                  </h3>
-                  {pendingUsers.length > 0 && (
+                  </h4>
+                  {pendingUsers.length > 0 && backendProvider === 'firebase' && (
                     <span className="px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-400 border border-blue-500/30 text-[10px] font-bold">
                       {pendingUsers.length} Offline Account(s) Queued
                     </span>
                   )}
                 </div>
                 <p className="text-xs text-neutral-400 mt-1 leading-relaxed">
-                  {quotaExhausted 
-                    ? 'Google Cloud daily free quota limit (50,000 reads / 20,000 writes) has been reached. Quota resets automatically every 24 hours at 00:00 UTC. User accounts created on this device are safeguarded in local storage.' 
-                    : 'Real-time synchronization active. User profiles, watchlists, subscriptions, and live chats sync directly to Firestore.'}
+                  {backendProvider === 'hatchable'
+                    ? 'Persistent high-performance backend with unlimited reads, writes, and real-time subscription verification. No quota exhaustion.'
+                    : (quotaExhausted 
+                        ? 'Google Cloud daily free quota limit (50,000 reads / 20,000 writes) reached. Quota resets at 00:00 UTC.' 
+                        : 'Real-time synchronization active with Firebase Cloud Firestore.')}
                 </p>
               </div>
             </div>
 
             <div className="flex items-center gap-2 flex-wrap w-full md:w-auto justify-start md:justify-end">
+              {backendProvider === 'hatchable' && (
+                <button
+                  type="button"
+                  onClick={handleSyncToHatchable}
+                  disabled={isSyncingHatchable}
+                  className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-md shadow-red-600/20 transition-all cursor-pointer disabled:opacity-50"
+                  title="Sync all client users and subscription codes to Hatchable store"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isSyncingHatchable ? 'animate-spin' : ''}`} />
+                  <span>{isSyncingHatchable ? 'Syncing to Hatchable...' : 'Sync Data to Hatchable'}</span>
+                </button>
+              )}
+
               <button
                 type="button"
                 onClick={handleDownloadUsersBackup}
@@ -909,10 +1022,10 @@ export const AdminPanel: React.FC = () => {
                 className="px-3 py-1.5 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-white border border-neutral-700 text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
               >
                 <RefreshCw className={`w-3.5 h-3.5 text-amber-400 ${testingConnection ? 'animate-spin' : ''}`} />
-                <span>{testingConnection ? 'Testing...' : 'Check Status'}</span>
+                <span>{testingConnection ? 'Testing...' : 'Test Connection'}</span>
               </button>
 
-              {quotaExhausted && (
+              {backendProvider === 'firebase' && quotaExhausted && (
                 <a
                   href="https://console.firebase.google.com/project/ai-studio-applet-webapp-8c6f3/firestore/databases/ai-studio-zinovis-4030a834-9ba9-449a-b2bf-8041fe4e9a68/data?openUpgradeDialog=true"
                   target="_blank"
@@ -924,7 +1037,7 @@ export const AdminPanel: React.FC = () => {
                 </a>
               )}
 
-              {pendingUsers.length > 0 && !quotaExhausted && (
+              {backendProvider === 'firebase' && pendingUsers.length > 0 && !quotaExhausted && (
                 <button
                   type="button"
                   onClick={handleSyncPending}
@@ -939,7 +1052,7 @@ export const AdminPanel: React.FC = () => {
           </div>
 
           {connectionTestResult && (
-            <div className={`mt-3 p-2.5 rounded-xl text-xs flex items-center gap-2 border ${
+            <div className={`mt-2 p-2.5 rounded-xl text-xs flex items-center gap-2 border ${
               connectionTestResult.success 
                 ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300' 
                 : 'bg-red-500/10 border-red-500/30 text-red-300'
@@ -949,8 +1062,15 @@ export const AdminPanel: React.FC = () => {
             </div>
           )}
 
+          {syncHatchableResult && (
+            <div className="mt-2 p-2.5 rounded-xl text-xs flex items-center gap-2 bg-emerald-500/10 border border-emerald-500/30 text-emerald-300">
+              <CheckCircle2 className="w-3.5 h-3.5 flex-shrink-0 text-emerald-400" />
+              <span>{syncHatchableResult}</span>
+            </div>
+          )}
+
           {syncPendingResult && (
-            <div className="mt-3 p-2.5 rounded-xl text-xs flex items-center gap-2 bg-blue-500/10 border border-blue-500/30 text-blue-300">
+            <div className="mt-2 p-2.5 rounded-xl text-xs flex items-center gap-2 bg-blue-500/10 border border-blue-500/30 text-blue-300">
               <Info className="w-3.5 h-3.5 flex-shrink-0 text-blue-400" />
               <span>{syncPendingResult}</span>
             </div>
@@ -972,7 +1092,7 @@ export const AdminPanel: React.FC = () => {
                 <div className="text-3xl font-black text-white">{totalUsersCount}</div>
                 <div className="mt-2 text-xs text-neutral-400 flex items-center gap-1">
                   <span className="text-emerald-400 font-semibold">100% cloud synced</span>
-                  <span>with Firebase</span>
+                  <span>with {backendProvider === 'hatchable' ? 'Hatchable' : 'Firebase'}</span>
                 </div>
               </div>
 

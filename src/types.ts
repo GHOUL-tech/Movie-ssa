@@ -160,6 +160,7 @@ export interface SystemSettings {
   subscriptionRequired: boolean;
   shopUrl: string;
   updatedAt: number;
+  backendProvider?: 'hatchable' | 'firebase';
 }
 
 export interface User {

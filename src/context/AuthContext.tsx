@@ -25,9 +25,12 @@ import {
 import { 
   subscribeToUserDoc, 
   subscribeToSystemSettings, 
-  redeemSubscriptionCodeInFirebase, 
-  saveSystemSettingsToFirebase 
-} from '../services/firebase';
+  redeemSubscriptionCodeInBackend, 
+  saveSystemSettingsToBackend,
+  getActiveBackendProvider,
+  setActiveBackendProvider,
+  BackendProvider
+} from '../services/backendService';
 
 interface AuthContextType {
   currentUser: User | null;
@@ -36,6 +39,8 @@ interface AuthContextType {
   isAuthModalOpen: boolean;
   authModalTab: 'login' | 'signup';
   isFirebaseSynced: boolean;
+  backendProvider: BackendProvider;
+  setBackendProvider: (provider: BackendProvider) => void;
   isAdmin: boolean;
   isAdminModalOpen: boolean;
   isSupportModalOpen: boolean;
@@ -89,6 +94,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [watchLaterCount, setWatchLaterCount] = useState(0);
   const [watchHistoryCount, setWatchHistoryCount] = useState(0);
   const [isFirebaseSynced, setIsFirebaseSynced] = useState(true);
+  const [backendProvider, setBackendProviderState] = useState<BackendProvider>(getActiveBackendProvider());
+
+  const setBackendProvider = (provider: BackendProvider) => {
+    setActiveBackendProvider(provider);
+    setBackendProviderState(provider);
+    saveSystemSettings({ backendProvider: provider });
+    saveSystemSettingsToBackend({ backendProvider: provider });
+  };
 
   // System Settings State
   const [systemSettings, setSystemSettingsState] = useState<SystemSettings>(getSystemSettings());
@@ -176,7 +189,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const setIsSubscriptionRequired = async (required: boolean) => {
     const updated = saveSystemSettings({ subscriptionRequired: required });
     setSystemSettingsState(updated);
-    await saveSystemSettingsToFirebase({ subscriptionRequired: required });
+    await saveSystemSettingsToBackend({ subscriptionRequired: required });
   };
 
   const redeemSubscriptionCode = async (code: string): Promise<{ success: boolean; message: string; tier?: SubscriptionTier }> => {
@@ -185,20 +198,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     try {
-      const res = await redeemSubscriptionCodeInFirebase(code, currentUser);
-      if (res.success && res.subscription) {
-        // Update user locally
-        const updatedUser = {
-          ...currentUser,
-          subscription: res.subscription,
-        };
-        const users = getAllUsers();
-        const idx = users.findIndex(u => u.id === currentUser.id);
-        if (idx >= 0) {
-          users[idx] = updatedUser;
-          saveUsersLocally(users);
-        }
-        setCurrentUserState(updatedUser);
+      const res = await redeemSubscriptionCodeInBackend(code, currentUser);
+      if (res.success) {
+        const updated = getCurrentUser() || currentUser;
+        setCurrentUserState(updated);
+        refreshUserData();
       }
       return res;
     } catch (err: any) {
@@ -315,6 +319,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isAuthModalOpen,
         authModalTab,
         isFirebaseSynced,
+        backendProvider,
+        setBackendProvider,
         isAdmin,
         isAdminModalOpen,
         isSupportModalOpen,

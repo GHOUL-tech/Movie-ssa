@@ -4,18 +4,42 @@ import { BrowserRouter } from 'react-router-dom';
 import App from './App.tsx';
 import './index.css';
 
-// Suppress noisy internal Firebase SDK quota errors since we handle fallback gracefully
+// Intercept and suppress Firestore quota exhaustion console noise
+const isQuotaExhaustedError = (...args: any[]) => {
+  return args.some(arg => {
+    if (!arg) return false;
+    const str = typeof arg === 'string' ? arg : (arg?.message || arg?.stack || String(arg) || '');
+    return (
+      str.includes('resource-exhausted') ||
+      str.includes('Quota exceeded') ||
+      str.includes('maximum backoff delay') ||
+      str.includes('Quota limit exceeded')
+    );
+  });
+};
+
 const originalConsoleError = console.error;
-console.error = (...args) => {
-  const msg = typeof args[0] === 'string' ? args[0] : '';
-  if (
-    msg.includes('@firebase/firestore') && 
-    (msg.includes('resource-exhausted') || msg.includes('Quota limit exceeded') || msg.includes('maximum backoff delay'))
-  ) {
-    return; // Suppress
+console.error = (...args: any[]) => {
+  if (isQuotaExhaustedError(...args)) {
+    return; // Gracefully suppressed as app auto-routes to local offline engine
   }
   originalConsoleError(...args);
 };
+
+const originalConsoleWarn = console.warn;
+console.warn = (...args: any[]) => {
+  if (isQuotaExhaustedError(...args)) {
+    return; // Gracefully suppressed
+  }
+  originalConsoleWarn(...args);
+};
+
+// Catch unhandled promise rejections originating from Firestore quota exhaustion
+window.addEventListener('unhandledrejection', (event) => {
+  if (isQuotaExhaustedError(event.reason)) {
+    event.preventDefault();
+  }
+});
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

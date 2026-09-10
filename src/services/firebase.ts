@@ -10,9 +10,17 @@ import {
   where, 
   getDocs,
   onSnapshot,
-  Firestore
+  Firestore,
+  setLogLevel,
+  disableNetwork,
+  enableNetwork
 } from 'firebase/firestore';
 import { User, WatchHistoryItem, WatchlistItem, SupportMessage, SystemSettings, SubscriptionCode, SubscriptionTier } from '../types';
+
+// Silence verbose internal backoff and retry warnings from Firestore
+try {
+  setLogLevel('silent');
+} catch {}
 
 // ==========================================
 // FIREBASE CONFIGURATION (Netlify & Vercel Safe)
@@ -39,7 +47,6 @@ try {
     firestoreDb = getFirestore(app);
   }
 } catch (err) {
-  console.warn('Fallback to default Firestore database instance:', err);
   firestoreDb = getFirestore(app);
 }
 
@@ -59,25 +66,49 @@ const DEFAULT_SHOP_URL = 'https://unikagamingshopnew.vercel.app/';
 // ==========================================
 // RESILIENT QUOTA & STATUS ENGINE
 // ==========================================
-let firestoreQuotaExhausted = false;
-let quotaExhaustedTimestamp = 0;
-const QUOTA_COOLDOWN_MS = 30000; // 30s retry window instead of permanent freeze
+const QUOTA_STORAGE_KEY = 'zinovis_firestore_quota_exhausted_time';
+const getStoredQuotaTime = (): number => {
+  try {
+    const val = sessionStorage.getItem(QUOTA_STORAGE_KEY) || localStorage.getItem(QUOTA_STORAGE_KEY);
+    return val ? parseInt(val, 10) : 0;
+  } catch {
+    return 0;
+  }
+};
+
+let quotaExhaustedTimestamp = getStoredQuotaTime();
+// Keep quota exhausted state persistent across reloads if occurred recently (within 10 minutes)
+let firestoreQuotaExhausted = quotaExhaustedTimestamp > 0 && (Date.now() - quotaExhaustedTimestamp < 10 * 60 * 1000);
+let isNetworkDisabled = false;
+
+// If already known to be exhausted, disable network immediately to avoid backoff loop
+if (firestoreQuotaExhausted) {
+  try {
+    disableNetwork(db).catch(() => {});
+    isNetworkDisabled = true;
+  } catch {}
+}
 
 type QuotaListener = (exhausted: boolean) => void;
 const quotaListeners = new Set<QuotaListener>();
 
 export function isFirestoreQuotaExhausted(): boolean {
-  if (firestoreQuotaExhausted && Date.now() - quotaExhaustedTimestamp > QUOTA_COOLDOWN_MS) {
-    // Auto-attempt recovery after cooldown
-    firestoreQuotaExhausted = false;
-    notifyQuotaListeners();
-  }
   return firestoreQuotaExhausted;
 }
 
-export function resetFirestoreQuotaStatus(): void {
+export async function resetFirestoreQuotaStatus(): Promise<void> {
   firestoreQuotaExhausted = false;
   quotaExhaustedTimestamp = 0;
+  try {
+    sessionStorage.removeItem(QUOTA_STORAGE_KEY);
+    localStorage.removeItem(QUOTA_STORAGE_KEY);
+  } catch {}
+  if (isNetworkDisabled) {
+    try {
+      await enableNetwork(db);
+      isNetworkDisabled = false;
+    } catch {}
+  }
   notifyQuotaListeners();
 }
 
@@ -89,22 +120,34 @@ export function onQuotaStatusChange(listener: QuotaListener): () => void {
 
 function notifyQuotaListeners() {
   quotaListeners.forEach(cb => {
-    try { cb(firestoreQuotaExhausted); } catch (e) { console.error(e); }
+    try { cb(firestoreQuotaExhausted); } catch {}
   });
 }
 
 export function checkQuotaError(err: any): boolean {
   const msg = err?.message || String(err || '');
+  const code = err?.code || '';
   if (
-    err?.code === 'resource-exhausted' || 
+    code === 'resource-exhausted' || 
     msg.includes('resource-exhausted') || 
     msg.includes('Quota limit exceeded') ||
     msg.includes('Quota exceeded')
   ) {
     firestoreQuotaExhausted = true;
     quotaExhaustedTimestamp = Date.now();
+    try {
+      sessionStorage.setItem(QUOTA_STORAGE_KEY, String(quotaExhaustedTimestamp));
+      localStorage.setItem(QUOTA_STORAGE_KEY, String(quotaExhaustedTimestamp));
+    } catch {}
+
+    if (!isNetworkDisabled) {
+      isNetworkDisabled = true;
+      try {
+        disableNetwork(db).catch(() => {});
+      } catch {}
+    }
+
     notifyQuotaListeners();
-    console.warn('Firestore daily quota threshold reached. Auto-retry in 30s.');
     return true;
   }
   return false;
@@ -112,11 +155,15 @@ export function checkQuotaError(err: any): boolean {
 
 export const testFirestoreConnection = async (): Promise<{ connected: boolean; quotaExhausted: boolean; error?: string }> => {
   try {
+    if (isNetworkDisabled) {
+      try {
+        await enableNetwork(db);
+        isNetworkDisabled = false;
+      } catch {}
+    }
     const pingRef = doc(db, 'system_config', 'ping');
     await setDoc(pingRef, { pingAt: Date.now() }, { merge: true });
-    firestoreQuotaExhausted = false;
-    quotaExhaustedTimestamp = 0;
-    notifyQuotaListeners();
+    await resetFirestoreQuotaStatus();
     return { connected: true, quotaExhausted: false };
   } catch (err: any) {
     const isQuota = checkQuotaError(err);
@@ -197,7 +244,7 @@ export const saveUserToFirebase = async (user: User): Promise<void> => {
  * Fetch a user from Firebase Firestore by ID, username, or email
  */
 export const getUserFromFirebase = async (identifier: string): Promise<User | null> => {
-  if (!identifier) return null;
+  if (!identifier || isFirestoreQuotaExhausted()) return null;
   const cleanId = identifier.trim().toLowerCase();
   
   try {
@@ -271,27 +318,44 @@ export const syncWatchLaterToFirebase = async (userId: string, watchLater: Watch
  * Subscribe to real-time updates for a user document
  */
 export const subscribeToUserDoc = (userId: string, callback: (user: User | null) => void): (() => void) => {
-  if (!userId) return () => {};
-  const userRef = doc(db, USERS_COLLECTION, userId);
-  return onSnapshot(
-    userRef,
-    (docSnap) => {
-      if (docSnap.exists()) {
-        callback(docSnap.data() as User);
-      } else {
-        callback(null);
+  if (!userId || isFirestoreQuotaExhausted()) return () => {};
+  try {
+    const userRef = doc(db, USERS_COLLECTION, userId);
+    let unsub: (() => void) | null = null;
+    unsub = onSnapshot(
+      userRef,
+      (docSnap) => {
+        if (docSnap.exists()) {
+          callback(docSnap.data() as User);
+        } else {
+          callback(null);
+        }
+      },
+      (error) => {
+        checkQuotaError(error);
+        if (unsub) {
+          try { unsub(); } catch {}
+          unsub = null;
+        }
       }
-    },
-    (error) => {
-      checkQuotaError(error);
-    }
-  );
+    );
+    return () => {
+      if (unsub) {
+        try { unsub(); } catch {}
+        unsub = null;
+      }
+    };
+  } catch (e) {
+    checkQuotaError(e);
+    return () => {};
+  }
 };
 
 /**
  * Fetch all registered users from Firebase Firestore (for Admin Panel)
  */
 export const getAllUsersFromFirebase = async (): Promise<User[]> => {
+  if (isFirestoreQuotaExhausted()) return [];
   try {
     const usersRef = collection(db, USERS_COLLECTION);
     const snap = await getDocs(usersRef);
@@ -453,9 +517,11 @@ export const sendSupportMessageToFirebase = async (msg: Omit<SupportMessage, 'id
 };
 
 export const subscribeToAllSupportMessages = (callback: (messages: SupportMessage[]) => void): (() => void) => {
+  if (isFirestoreQuotaExhausted()) return () => {};
   try {
     const supportRef = collection(db, SUPPORT_COLLECTION);
-    return onSnapshot(
+    let unsub: (() => void) | null = null;
+    unsub = onSnapshot(
       supportRef,
       (snap) => {
         const msgs: SupportMessage[] = [];
@@ -467,19 +533,30 @@ export const subscribeToAllSupportMessages = (callback: (messages: SupportMessag
       },
       (err) => {
         checkQuotaError(err);
+        if (unsub) {
+          try { unsub(); } catch {}
+          unsub = null;
+        }
       }
     );
+    return () => {
+      if (unsub) {
+        try { unsub(); } catch {}
+        unsub = null;
+      }
+    };
   } catch (e) {
-    console.error('Snapshot init error for support messages:', e);
+    checkQuotaError(e);
     return () => {};
   }
 };
 
 export const subscribeToUserSupportMessages = (userId: string, callback: (messages: SupportMessage[]) => void): (() => void) => {
-  if (!userId) return () => {};
+  if (!userId || isFirestoreQuotaExhausted()) return () => {};
   try {
     const supportRef = collection(db, SUPPORT_COLLECTION);
-    return onSnapshot(
+    let unsub: (() => void) | null = null;
+    unsub = onSnapshot(
       supportRef,
       (snap) => {
         const msgs: SupportMessage[] = [];
@@ -494,10 +571,20 @@ export const subscribeToUserSupportMessages = (userId: string, callback: (messag
       },
       (err) => {
         checkQuotaError(err);
+        if (unsub) {
+          try { unsub(); } catch {}
+          unsub = null;
+        }
       }
     );
+    return () => {
+      if (unsub) {
+        try { unsub(); } catch {}
+        unsub = null;
+      }
+    };
   } catch (e) {
-    console.error('Snapshot init error for user support messages:', e);
+    checkQuotaError(e);
     return () => {};
   }
 };
@@ -518,6 +605,13 @@ export const markSupportMessageRead = async (messageId: string): Promise<void> =
 // ==========================================
 
 export const getSystemSettingsFromFirebase = async (): Promise<SystemSettings> => {
+  if (isFirestoreQuotaExhausted()) {
+    return {
+      subscriptionRequired: false,
+      shopUrl: DEFAULT_SHOP_URL,
+      updatedAt: Date.now(),
+    };
+  }
   try {
     const docRef = doc(db, SYSTEM_CONFIG_COLLECTION, SETTINGS_DOC_ID);
     const snap = await getDoc(docRef);
@@ -550,9 +644,11 @@ export const saveSystemSettingsToFirebase = async (settings: Partial<SystemSetti
 };
 
 export const subscribeToSystemSettings = (callback: (settings: SystemSettings) => void): (() => void) => {
+  if (isFirestoreQuotaExhausted()) return () => {};
   try {
     const docRef = doc(db, SYSTEM_CONFIG_COLLECTION, SETTINGS_DOC_ID);
-    return onSnapshot(
+    let unsub: (() => void) | null = null;
+    unsub = onSnapshot(
       docRef,
       (docSnap) => {
         if (docSnap.exists()) {
@@ -567,10 +663,20 @@ export const subscribeToSystemSettings = (callback: (settings: SystemSettings) =
       },
       (err) => {
         checkQuotaError(err);
+        if (unsub) {
+          try { unsub(); } catch {}
+          unsub = null;
+        }
       }
     );
+    return () => {
+      if (unsub) {
+        try { unsub(); } catch {}
+        unsub = null;
+      }
+    };
   } catch (e) {
-    console.warn('System settings listener init error:', e);
+    checkQuotaError(e);
     return () => {};
   }
 };
@@ -580,6 +686,7 @@ export const subscribeToSystemSettings = (callback: (settings: SystemSettings) =
 // ==========================================
 
 export const getAllSubscriptionCodesFromFirebase = async (): Promise<SubscriptionCode[]> => {
+  if (isFirestoreQuotaExhausted()) return [];
   try {
     const codesRef = collection(db, CODES_COLLECTION);
     const snap = await getDocs(codesRef);
@@ -630,9 +737,11 @@ export const deleteSubscriptionCodeFromFirebase = async (codeId: string): Promis
 };
 
 export const subscribeToSubscriptionCodes = (callback: (codes: SubscriptionCode[]) => void): (() => void) => {
+  if (isFirestoreQuotaExhausted()) return () => {};
   try {
     const codesRef = collection(db, CODES_COLLECTION);
-    return onSnapshot(
+    let unsub: (() => void) | null = null;
+    unsub = onSnapshot(
       codesRef,
       (snap) => {
         const codes: SubscriptionCode[] = [];
@@ -644,10 +753,20 @@ export const subscribeToSubscriptionCodes = (callback: (codes: SubscriptionCode[
       },
       (err) => {
         checkQuotaError(err);
+        if (unsub) {
+          try { unsub(); } catch {}
+          unsub = null;
+        }
       }
     );
+    return () => {
+      if (unsub) {
+        try { unsub(); } catch {}
+        unsub = null;
+      }
+    };
   } catch (e) {
-    console.warn('Subscription codes listener init error:', e);
+    checkQuotaError(e);
     return () => {};
   }
 };

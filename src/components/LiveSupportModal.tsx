@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { SupportMessage } from '../types';
-import { sendSupportMessageToFirebase, subscribeToUserSupportMessages } from '../services/firebase';
+import { sendSupportMessageToBackend, subscribeToUserSupportMessages } from '../services/backendService';
 
 interface LiveSupportModalProps {
   isOpen: boolean;
@@ -60,7 +60,7 @@ export const LiveSupportModal: React.FC<LiveSupportModalProps> = ({ isOpen, onCl
     setInputText('');
 
     setSending(true);
-    await sendSupportMessageToFirebase({
+    await sendSupportMessageToBackend({
       userId: effectiveUserId,
       userName: senderName,
       userEmail: senderEmail,
@@ -77,7 +77,7 @@ export const LiveSupportModal: React.FC<LiveSupportModalProps> = ({ isOpen, onCl
     const senderName = currentUser?.name || guestName.trim() || 'Guest Viewer';
     const senderEmail = currentUser?.email || guestEmail.trim() || 'guest@zinovis.tv';
 
-    await sendSupportMessageToFirebase({
+    await sendSupportMessageToBackend({
       userId: effectiveUserId,
       userName: senderName,
       userEmail: senderEmail,

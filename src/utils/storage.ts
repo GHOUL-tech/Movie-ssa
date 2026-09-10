@@ -1,16 +1,19 @@
 import { ContinueWatchingItem, MediaType, WatchlistItem, WatchHistoryItem, User, SystemSettings, SubscriptionCode, SubscriptionTier, UserSubscription } from '../types';
 import { DEFAULT_AVATAR, getInitialAvatar } from './avatars';
 import { 
-  saveUserToFirebase, 
-  getUserFromFirebase, 
-  getAllUsersFromFirebase,
-  isFirestoreQuotaExhausted,
+  saveUserToBackend, 
+  getUserFromBackend, 
+  getAllUsersFromBackend,
+  deleteUserFromBackend,
+  saveSystemSettingsToBackend,
+  saveSubscriptionCodeToBackend,
+  deleteSubscriptionCodeFromBackend,
+  getActiveBackendProvider
+} from '../services/backendService';
+import { 
+  isFirestoreQuotaExhausted, 
   syncWatchHistoryToFirebase, 
-  syncWatchLaterToFirebase,
-  deleteUserFromFirebase,
-  saveSystemSettingsToFirebase,
-  saveSubscriptionCodeToFirebase,
-  deleteSubscriptionCodeFromFirebase
+  syncWatchLaterToFirebase 
 } from '../services/firebase';
 
 const WATCHLIST_KEY = 'cinescope_watchlist_v1';
@@ -63,7 +66,7 @@ export function saveUsers(users: User[]): void {
     if (currentId) {
       const current = users.find(u => u.id === currentId);
       if (current) {
-        saveUserToFirebase(current).catch(err => console.error('Firebase save error:', err));
+        saveUserToBackend(current).catch(err => console.error('Backend save error:', err));
       }
     }
   } catch (e) {
@@ -96,8 +99,8 @@ export function setCurrentUser(user: User | null): void {
       localStorage.setItem(CURRENT_USER_ID_KEY, user.id);
       // Sync user's watchLater with global watchlist key
       saveWatchlist(user.watchLater || []);
-      // Sync to Firebase backend
-      saveUserToFirebase(user).catch(err => console.error('Firebase setCurrentUser error:', err));
+      // Sync to Backend (Hatchable / Firebase)
+      saveUserToBackend(user).catch(err => console.error('Backend setCurrentUser error:', err));
     } else {
       localStorage.removeItem(CURRENT_USER_ID_KEY);
     }
@@ -166,15 +169,11 @@ export function registerUser(params: {
   saveUsers(users);
   setCurrentUser(newUser);
 
-  // Background save to Firebase backend (or queue for sync if quota exceeded)
-  if (!isFirestoreQuotaExhausted()) {
-    saveUserToFirebase(newUser).catch(err => {
-      console.error('Firebase register save error:', err);
-      addPendingUserSync(newUser);
-    });
-  } else {
+  // Background save to Backend (Hatchable / Firebase)
+  saveUserToBackend(newUser).catch(err => {
+    console.error('Backend register save error:', err);
     addPendingUserSync(newUser);
-  }
+  });
 
   return { success: true, user: newUser };
 }
@@ -213,12 +212,7 @@ export async function syncPendingUsersToFirebase(): Promise<{ synced: number; fa
 
   for (const user of pending) {
     try {
-      await saveUserToFirebase(user);
-      if (isFirestoreQuotaExhausted()) {
-        remaining.push(user);
-        failed++;
-        break;
-      }
+      await saveUserToBackend(user);
       synced++;
     } catch {
       remaining.push(user);
@@ -246,16 +240,14 @@ export async function registerUserAsync(params: {
   const cleanUsername = (params.username?.trim() || fallbackUsername).toLowerCase();
   const customId = (params.id?.trim() || cleanUsername || `usr_${Date.now().toString(36)}`).toLowerCase();
 
-  // Check Firebase first for existing user only if quota is not exhausted
-  if (!isFirestoreQuotaExhausted()) {
-    try {
-      const existingRemote = await getUserFromFirebase(customId);
-      if (existingRemote) {
-        return { success: false, error: `Account ID "${customId}" is already registered in Firebase.` };
-      }
-    } catch (err) {
-      console.warn('Firebase pre-check failed, continuing with registration:', err);
+  // Check Backend for existing user
+  try {
+    const existingRemote = await getUserFromBackend(customId);
+    if (existingRemote) {
+      return { success: false, error: `Account ID "${customId}" is already registered in backend.` };
     }
+  } catch (err) {
+    console.warn('Backend pre-check notice:', err);
   }
 
   return registerUser(params);
@@ -309,12 +301,12 @@ export async function loginUserAsync(
     return { success: true, user: found };
   }
 
-  // 2. Query Firebase Firestore database
+  // 2. Query Backend (Hatchable / Firebase) database
   try {
-    let remoteUser = await getUserFromFirebase(clean);
+    let remoteUser = await getUserFromBackend(clean);
     if (!remoteUser) {
-      // Fallback: check all users in Firebase in case of casing differences
-      const allRemotes = await getAllUsersFromFirebase();
+      // Fallback: check all users in backend in case of casing differences
+      const allRemotes = await getAllUsersFromBackend();
       remoteUser = allRemotes.find(
         u => (u.id && u.id.toLowerCase() === clean) ||
              (u.username && u.username.toLowerCase() === clean) ||
@@ -339,7 +331,7 @@ export async function loginUserAsync(
       return { success: true, user: remoteUser };
     }
   } catch (err) {
-    console.error('Firebase login error:', err);
+    console.error('Backend login error:', err);
   }
 
   return { success: false, error: 'User not found. Please check your ID, username, or email, or create a new account.' };
@@ -392,7 +384,7 @@ export async function deleteUserAccount(userId: string): Promise<boolean> {
     logoutUser();
   }
   
-  await deleteUserFromFirebase(userId).catch(err => console.error(err));
+  await deleteUserFromBackend(userId).catch(err => console.error(err));
   return true;
 }
 
@@ -420,11 +412,11 @@ export async function adminUpdateUser(
     setCurrentUser(updated);
   }
 
-  // Save to Firebase Firestore backend
+  // Save to Backend (Hatchable / Firebase)
   try {
-    await saveUserToFirebase(updated);
+    await saveUserToBackend(updated);
   } catch (err) {
-    console.error('Failed to sync updated user to Firebase:', err);
+    console.error('Failed to sync updated user to backend:', err);
   }
 
   return { success: true, user: updated };
@@ -492,9 +484,9 @@ export async function findUserByEmail(identifier: string): Promise<User | null> 
   );
   if (localFound) return localFound;
 
-  // 2. Check Firebase Firestore direct query
+  // 2. Check Backend direct query
   try {
-    const remote = await getUserFromFirebase(clean);
+    const remote = await getUserFromBackend(clean);
     if (remote) {
       const idx = users.findIndex(u => u.id === remote.id);
       if (idx >= 0) {
@@ -506,12 +498,12 @@ export async function findUserByEmail(identifier: string): Promise<User | null> 
       return remote;
     }
   } catch (err) {
-    console.error('Error finding user by identifier in Firebase:', err);
+    console.error('Error finding user by identifier in backend:', err);
   }
 
-  // 3. Fallback: Search all users from Firebase in case query had case mismatch or custom ID
+  // 3. Fallback: Search all users from Backend in case query had case mismatch or custom ID
   try {
-    const allRemotes = await getAllUsersFromFirebase();
+    const allRemotes = await getAllUsersFromBackend();
     const match = allRemotes.find(u => 
       (u.email && u.email.trim().toLowerCase() === clean) ||
       (u.username && u.username.trim().toLowerCase() === clean) ||
@@ -528,7 +520,7 @@ export async function findUserByEmail(identifier: string): Promise<User | null> 
       return match;
     }
   } catch (err) {
-    console.error('Error scanning all Firebase users for match:', err);
+    console.error('Error scanning backend users for match:', err);
   }
 
   return null;
@@ -548,7 +540,7 @@ export async function resetPasswordWithEmail(
   let targetUser: User | null = idx >= 0 ? users[idx] : null;
 
   if (!targetUser) {
-    targetUser = await getUserFromFirebase(userId);
+    targetUser = await getUserFromBackend(userId);
   }
 
   if (!targetUser) {
@@ -568,8 +560,8 @@ export async function resetPasswordWithEmail(
 
   saveUsers(users);
   setCurrentUser(updated);
-  // Ensure the updated password gets saved directly to Firebase
-  saveUserToFirebase(updated).catch(err => console.error('Firebase save user on password reset error:', err));
+  // Ensure the updated password gets saved directly to Backend
+  saveUserToBackend(updated).catch(err => console.error('Backend save user on password reset error:', err));
   return { success: true, user: updated };
 }
 
@@ -841,7 +833,7 @@ export function saveSystemSettings(settings: Partial<SystemSettings>): SystemSet
   };
   try {
     localStorage.setItem(SYSTEM_SETTINGS_KEY, JSON.stringify(updated));
-    saveSystemSettingsToFirebase(updated).catch(e => console.error('Firebase save settings error:', e));
+    saveSystemSettingsToBackend(updated).catch(e => console.error('Backend save settings error:', e));
   } catch (e) {
     console.error('Failed to save system settings:', e);
   }
@@ -897,7 +889,7 @@ export function getSubscriptionCodes(): SubscriptionCode[] {
   // If no codes exist in storage, initialize with the 3 Master VIP codes
   saveSubscriptionCodes(DEFAULT_MASTER_SUBSCRIPTION_CODES);
   DEFAULT_MASTER_SUBSCRIPTION_CODES.forEach(code => {
-    saveSubscriptionCodeToFirebase(code).catch(() => {});
+    saveSubscriptionCodeToBackend(code).catch(() => {});
   });
   return DEFAULT_MASTER_SUBSCRIPTION_CODES;
 }
@@ -913,7 +905,7 @@ export function restoreMasterSubscriptionCodes(): SubscriptionCode[] {
   
   const updated = [...toAdd, ...current];
   saveSubscriptionCodes(updated);
-  toAdd.forEach(c => saveSubscriptionCodeToFirebase(c).catch(() => {}));
+  toAdd.forEach(c => saveSubscriptionCodeToBackend(c).catch(() => {}));
   return updated;
 }
 
@@ -949,7 +941,7 @@ export function createSubscriptionCode(
   const codes = getSubscriptionCodes();
   codes.unshift(newCode);
   saveSubscriptionCodes(codes);
-  saveSubscriptionCodeToFirebase(newCode).catch(e => console.error('Firebase save code error:', e));
+  saveSubscriptionCodeToBackend(newCode).catch(e => console.error('Backend save code error:', e));
 
   return newCode;
 }
@@ -980,7 +972,7 @@ export function createBatchSubscriptionCodes(
     };
     created.push(newCode);
     existingCodes.unshift(newCode);
-    saveSubscriptionCodeToFirebase(newCode).catch(e => console.error('Firebase save code error:', e));
+    saveSubscriptionCodeToBackend(newCode).catch(e => console.error('Backend save code error:', e));
   }
 
   saveSubscriptionCodes(existingCodes);
@@ -990,7 +982,7 @@ export function createBatchSubscriptionCodes(
 export async function deleteSubscriptionCode(codeId: string): Promise<void> {
   const codes = getSubscriptionCodes().filter(c => c.id !== codeId);
   saveSubscriptionCodes(codes);
-  await deleteSubscriptionCodeFromFirebase(codeId).catch(e => console.error('Firebase delete code error:', e));
+  await deleteSubscriptionCodeFromBackend(codeId).catch(e => console.error('Backend delete code error:', e));
 }
 
 export function generateRandomCodeString(tier: SubscriptionTier): string {

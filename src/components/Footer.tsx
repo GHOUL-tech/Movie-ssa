@@ -116,23 +116,26 @@ export const Footer: React.FC<FooterProps> = ({ onNavigateTab }) => {
 
         {/* Bottom Disclaimer */}
         <div className="pt-6 border-t border-neutral-800/60 flex flex-col sm:flex-row items-center justify-between text-xs text-neutral-400 gap-4">
-          <p className="flex items-center gap-1">
+          <p className="flex items-center gap-1.5">
             <button
+              id="admin-access-point-copyright"
               onClick={handleAdminAccess}
-              className="text-neutral-400 hover:text-red-500 hover:bg-neutral-800/80 px-1 py-0.5 rounded transition-all cursor-pointer font-bold select-none focus:outline-none focus:ring-1 focus:ring-red-500/50"
-              title="Admin Portal Access Point (©)"
-              aria-label="Admin Access Point"
+              className="text-neutral-400 hover:text-red-400 hover:bg-neutral-800/90 px-1.5 py-0.5 rounded-md transition-all cursor-pointer font-bold select-none focus:outline-none focus:ring-1 focus:ring-red-500/50 flex items-center justify-center hover:scale-110 active:scale-95"
+              title="Admin Portal Access Point (©) - Click to access Admin console"
+              aria-label="Admin Access Point (©)"
             >
               ©
             </button>
-            <span>{new Date().getFullYear()} Zinovis Streaming Service. Powered by TMDB API &amp; Firebase.</span>
+            <span>{new Date().getFullYear()} Zinovis Streaming Service. Powered by TMDB API &amp; Hatchable Backend.</span>
           </p>
           <div className="flex items-center gap-1.5 text-[11px]">
             <span>Crafted with</span>
             <button
+              id="admin-access-point-heart"
               onClick={handleAdminAccess}
               className="p-1 rounded-md hover:bg-neutral-800 transition-all group cursor-pointer"
               title="Admin Portal Access Point (© / ❤️)"
+              aria-label="Admin Access Point Heart"
             >
               <Heart className="w-3.5 h-3.5 text-red-500 fill-current group-hover:scale-125 transition-transform" />
             </button>
