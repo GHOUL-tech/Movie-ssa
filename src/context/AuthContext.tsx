@@ -26,10 +26,7 @@ import {
   subscribeToUserDoc, 
   subscribeToSystemSettings, 
   redeemSubscriptionCodeInBackend, 
-  saveSystemSettingsToBackend,
-  getActiveBackendProvider,
-  setActiveBackendProvider,
-  BackendProvider
+  saveSystemSettingsToBackend
 } from '../services/backendService';
 
 interface AuthContextType {
@@ -39,8 +36,6 @@ interface AuthContextType {
   isAuthModalOpen: boolean;
   authModalTab: 'login' | 'signup';
   isFirebaseSynced: boolean;
-  backendProvider: BackendProvider;
-  setBackendProvider: (provider: BackendProvider) => void;
   isAdmin: boolean;
   isAdminModalOpen: boolean;
   isSupportModalOpen: boolean;
@@ -94,14 +89,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [watchLaterCount, setWatchLaterCount] = useState(0);
   const [watchHistoryCount, setWatchHistoryCount] = useState(0);
   const [isFirebaseSynced, setIsFirebaseSynced] = useState(true);
-  const [backendProvider, setBackendProviderState] = useState<BackendProvider>(getActiveBackendProvider());
-
-  const setBackendProvider = (provider: BackendProvider) => {
-    setActiveBackendProvider(provider);
-    setBackendProviderState(provider);
-    saveSystemSettings({ backendProvider: provider });
-    saveSystemSettingsToBackend({ backendProvider: provider });
-  };
 
   // System Settings State
   const [systemSettings, setSystemSettingsState] = useState<SystemSettings>(getSystemSettings());
@@ -319,8 +306,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isAuthModalOpen,
         authModalTab,
         isFirebaseSynced,
-        backendProvider,
-        setBackendProvider,
         isAdmin,
         isAdminModalOpen,
         isSupportModalOpen,

@@ -7,8 +7,7 @@ import {
   deleteUserFromBackend,
   saveSystemSettingsToBackend,
   saveSubscriptionCodeToBackend,
-  deleteSubscriptionCodeFromBackend,
-  getActiveBackendProvider
+  deleteSubscriptionCodeFromBackend
 } from '../services/backendService';
 import { 
   isFirestoreQuotaExhausted, 

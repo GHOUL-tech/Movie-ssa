@@ -34,7 +34,6 @@ import { AVATAR_PRESETS, ANIME_AVATARS, getInitialAvatar } from '../utils/avatar
 import { COUNTRIES } from '../utils/countries';
 import { sendOtpViaEmail, EMAILJS_DRAFT_TEMPLATE } from '../services/emailService';
 import { isFirestoreQuotaExhausted, verifyOtpInFirebase } from '../services/firebase';
-import { getActiveBackendProvider } from '../services/backendService';
 
 export const AuthModal: React.FC = () => {
   const { 
@@ -424,20 +423,20 @@ ${EMAILJS_DRAFT_TEMPLATE.plainText}
                   : 'Step 3 of 3: Create & confirm new password'
                 : isLogin 
                   ? 'Access your saved watchlist & multi-server stream queue' 
-                  : `100% Free • Synced with ${getActiveBackendProvider() === 'hatchable' ? 'Hatchable Cloud Engine' : 'Firebase Cloud Backend'}`}
+                  : '100% Free • Synced with Firebase Cloud Backend'}
             </p>
           </div>
         </div>
 
-        {/* Offline Sync Mode Notice (Displayed only when Firebase is active and its daily quota is exhausted) */}
-        {getActiveBackendProvider() === 'firebase' && isFirestoreQuotaExhausted() && (
+        {/* Offline Sync Mode Notice (Displayed when Firestore daily free quota is exhausted) */}
+        {isFirestoreQuotaExhausted() && (
           <div className="mb-5 p-2.5 rounded-xl bg-neutral-900/90 border border-amber-500/30 text-neutral-300 text-[11px] font-medium flex flex-col items-center justify-center gap-1 text-center">
             <div className="flex items-center gap-2 text-amber-300">
               <div className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
               <span>Offline Sync Mode: Your data is saved locally and will auto-sync to the cloud later.</span>
             </div>
             <p className="text-[10px] text-neutral-400">
-              Firebase daily free tier read/write quota reached. Auto-resets daily at 00:00 UTC (or switch to Hatchable in Admin).
+              Firebase daily free tier read/write quota reached. Auto-resets daily at 00:00 UTC.
             </p>
           </div>
         )}

@@ -126,7 +126,7 @@ export const Footer: React.FC<FooterProps> = ({ onNavigateTab }) => {
             >
               ©
             </button>
-            <span>{new Date().getFullYear()} Zinovis Streaming Service. Powered by TMDB API &amp; Hatchable Backend.</span>
+            <span>{new Date().getFullYear()} Zinovis Streaming Service. Powered by TMDB API &amp; Cloud Engine.</span>
           </p>
           <div className="flex items-center gap-1.5 text-[11px]">
             <span>Crafted with</span>
