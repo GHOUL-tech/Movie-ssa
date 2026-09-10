@@ -4,7 +4,7 @@
     "subscriptionRequired": false,
     "shopUrl": "https://unikagamingshopnew.vercel.app/",
     "backendProvider": "hatchable",
-    "updatedAt": 1789065331150
+    "updatedAt": 1789066694255
   },
   "codes": [
     {
@@ -24,6 +24,24 @@
       "createdAt": 1789064629143,
       "isRedeemed": false,
       "note": "1 Month Complimentary Pass (Hatchable)"
+    },
+    {
+      "id": "sub_1788637672294_nfknc",
+      "code": "RAHINOSK",
+      "tier": "one_month",
+      "durationDays": 30,
+      "createdAt": 1788637672294,
+      "isRedeemed": false,
+      "note": "Generated in Hatchable Backend"
+    },
+    {
+      "id": "sub_1788637770626_uh4br",
+      "code": "OPS2K",
+      "tier": "permanent",
+      "durationDays": 0,
+      "createdAt": 1788637770626,
+      "isRedeemed": false,
+      "note": "Generated in Hatchable Backend"
     }
   ],
   "supportMessages": [

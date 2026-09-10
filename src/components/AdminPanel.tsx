@@ -2151,50 +2151,63 @@ export const AdminPanel: React.FC = () => {
                 )}
 
                 <form onSubmit={handleSaveEmailConfig} className="space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-3.5">
                     <div>
                       <label className="block text-xs font-bold text-neutral-300 mb-1.5">
-                        EmailJS Service ID
+                        Service ID
                       </label>
                       <input
                         type="text"
-                        placeholder="e.g. service_xxxxxxx"
+                        placeholder="default_service"
                         value={emailConfig.serviceId}
                         onChange={(e) => setEmailConfig({ ...emailConfig, serviceId: e.target.value })}
-                        className="w-full px-3.5 py-2.5 bg-neutral-950 border border-neutral-800 focus:border-red-500 rounded-2xl text-xs text-white placeholder:text-neutral-600 focus:outline-none focus:ring-1 focus:ring-red-500"
+                        className="w-full px-3.5 py-2.5 bg-neutral-950 border border-neutral-800 focus:border-red-500 rounded-2xl text-xs text-white placeholder:text-neutral-600 focus:outline-none focus:ring-1 focus:ring-red-500 font-mono"
                       />
                     </div>
 
                     <div>
                       <label className="block text-xs font-bold text-neutral-300 mb-1.5">
-                        EmailJS Template ID
+                        Template ID
                       </label>
                       <input
                         type="text"
-                        placeholder="e.g. template_xxxxxxx"
+                        placeholder="template_2eivmll"
                         value={emailConfig.templateId}
                         onChange={(e) => setEmailConfig({ ...emailConfig, templateId: e.target.value })}
-                        className="w-full px-3.5 py-2.5 bg-neutral-950 border border-neutral-800 focus:border-red-500 rounded-2xl text-xs text-white placeholder:text-neutral-600 focus:outline-none focus:ring-1 focus:ring-red-500"
+                        className="w-full px-3.5 py-2.5 bg-neutral-950 border border-neutral-800 focus:border-red-500 rounded-2xl text-xs text-white placeholder:text-neutral-600 focus:outline-none focus:ring-1 focus:ring-red-500 font-mono"
                       />
                     </div>
 
                     <div>
                       <label className="block text-xs font-bold text-neutral-300 mb-1.5">
-                        EmailJS Public Key
+                        Public Key
                       </label>
                       <input
                         type="text"
-                        placeholder="e.g. public_key_xxxxxxx"
+                        placeholder="4QQ0PbfytyUk2Odp_"
                         value={emailConfig.publicKey}
                         onChange={(e) => setEmailConfig({ ...emailConfig, publicKey: e.target.value })}
-                        className="w-full px-3.5 py-2.5 bg-neutral-950 border border-neutral-800 focus:border-red-500 rounded-2xl text-xs text-white placeholder:text-neutral-600 focus:outline-none focus:ring-1 focus:ring-red-500"
+                        className="w-full px-3.5 py-2.5 bg-neutral-950 border border-neutral-800 focus:border-red-500 rounded-2xl text-xs text-white placeholder:text-neutral-600 focus:outline-none focus:ring-1 focus:ring-red-500 font-mono"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-neutral-300 mb-1.5">
+                        Private Key
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="M8ofvODFUYLwhHyUoEI88"
+                        value={emailConfig.privateKey || ''}
+                        onChange={(e) => setEmailConfig({ ...emailConfig, privateKey: e.target.value })}
+                        className="w-full px-3.5 py-2.5 bg-neutral-950 border border-neutral-800 focus:border-red-500 rounded-2xl text-xs text-white placeholder:text-neutral-600 focus:outline-none focus:ring-1 focus:ring-red-500 font-mono"
                       />
                     </div>
                   </div>
 
                   <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
                     <p className="text-[11px] text-neutral-500 max-w-xl leading-relaxed">
-                      💡 Tip for Vercel deployments: You can configure these 3 values either here directly, or add them in your Vercel Project Settings as <code className="text-neutral-300">VITE_EMAILJS_SERVICE_ID</code>, <code className="text-neutral-300">VITE_EMAILJS_TEMPLATE_ID</code>, and <code className="text-neutral-300">VITE_EMAILJS_PUBLIC_KEY</code>.
+                      💡 Tip for Vercel deployments: You can configure these values either here directly, or add them in your Vercel Project Settings as <code className="text-neutral-300">VITE_EMAILJS_SERVICE_ID</code>, <code className="text-neutral-300">VITE_EMAILJS_TEMPLATE_ID</code>, <code className="text-neutral-300">VITE_EMAILJS_PUBLIC_KEY</code>, and <code className="text-neutral-300">VITE_EMAILJS_PRIVATE_KEY</code>.
                     </p>
 
                     <div className="flex items-center gap-2">
