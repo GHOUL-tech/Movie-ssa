@@ -2124,9 +2124,9 @@ export const AdminPanel: React.FC = () => {
                         <span>Live EmailJS Configured</span>
                       </span>
                     ) : (
-                      <span className="px-3 py-1 rounded-full bg-blue-500/10 border border-blue-500/30 text-blue-400 text-xs font-semibold flex items-center gap-1.5">
+                      <span className="px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-400 text-xs font-semibold flex items-center gap-1.5">
                         <Info className="w-3.5 h-3.5" />
-                        <span>Demo OTP Mode (Code Screen Verification)</span>
+                        <span>EmailJS Setup Pending (Enter Keys Below)</span>
                       </span>
                     )}
                   </div>

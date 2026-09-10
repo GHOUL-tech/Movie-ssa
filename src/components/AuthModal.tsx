@@ -58,7 +58,6 @@ export const AuthModal: React.FC = () => {
   const [generatedOtp, setGeneratedOtp] = useState('');
   const [enteredOtp, setEnteredOtp] = useState('');
   const [targetResetUser, setTargetResetUser] = useState<any>(null);
-  const [isOtpSimulated, setIsOtpSimulated] = useState(false);
   const [otpResendCountdown, setOtpResendCountdown] = useState(0);
   const [resetNewPassword, setResetNewPassword] = useState('');
   const [resetConfirmPassword, setResetConfirmPassword] = useState('');
@@ -90,7 +89,6 @@ export const AuthModal: React.FC = () => {
   // Errors & loading
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [copiedOtp, setCopiedOtp] = useState(false);
 
   // Reset forgot password state when auth modal tab switches or closes
   useEffect(() => {
@@ -172,26 +170,18 @@ export const AuthModal: React.FC = () => {
       setTargetResetUser(user);
 
       const targetEmail = user.email || cleanInput;
-      const emailResult = await sendOtpViaEmail({
+      await sendOtpViaEmail({
         to_email: targetEmail,
         to_name: user.name || user.username || 'Streamer',
         otp_code: otpCode,
+        userId: user.id
       });
 
-      const simulated = !!emailResult.isSimulated;
-      setIsOtpSimulated(simulated);
-      
       setForgotStep('otp');
-      // Crucial: ALWAYS keep input blank so user must enter OTP code
+      // Crucial: ALWAYS keep input blank so user must enter OTP code received in email
       setEnteredOtp('');
       setOtpResendCountdown(60);
-      
-      if (simulated) {
-        setResetSuccessMessage(`6-Digit Verification Code generated for ${targetEmail}.`);
-        console.log(`[Zinovis OTP]: The verification code for ${targetEmail} is ${otpCode}`);
-      } else {
-        setResetSuccessMessage(`A 6-digit verification code was sent to ${targetEmail}`);
-      }
+      setResetSuccessMessage(`A 6-digit verification code was sent to ${targetEmail}. Please check your email inbox.`);
     } catch (err: any) {
       setError(err.message || 'Failed to generate verification OTP code.');
     } finally {
@@ -609,74 +599,18 @@ ${EMAILJS_DRAFT_TEMPLATE.plainText}
             {/* STEP 2: OTP VERIFICATION */}
             {forgotStep === 'otp' && (
               <form onSubmit={handleVerifyOtp} className="space-y-4">
-                {isOtpSimulated ? (
-                  <div className="p-3.5 rounded-2xl bg-neutral-950/80 border border-neutral-800 space-y-2.5">
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-neutral-400">Account Target:</span>
-                      <span className="font-bold text-white truncate max-w-[190px]">{targetResetUser?.email || forgotEmail}</span>
-                    </div>
-                    <div className="flex items-center justify-between bg-neutral-900/90 px-3.5 py-2.5 rounded-xl border border-neutral-800">
-                      <div>
-                        <div className="text-[10px] uppercase tracking-wider text-neutral-400 font-medium">Security Verification Code</div>
-                        <div className="text-xl font-mono font-black text-red-500 tracking-[0.25em]">{generatedOtp}</div>
-                      </div>
-                      <div className="flex items-center gap-1.5">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setEnteredOtp(generatedOtp);
-                          }}
-                          className="px-2.5 py-1.5 rounded-xl bg-red-600/20 hover:bg-red-600/30 text-red-400 border border-red-500/30 text-xs font-semibold transition-all cursor-pointer flex items-center gap-1"
-                          title="Auto-fill code into input field"
-                        >
-                          <Sparkles className="w-3.5 h-3.5" />
-                          <span>Auto-Fill</span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            navigator.clipboard.writeText(generatedOtp);
-                            setCopiedOtp(true);
-                            setTimeout(() => setCopiedOtp(false), 2000);
-                          }}
-                          className="px-2.5 py-1.5 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-white text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 border border-neutral-700"
-                          title="Copy OTP to clipboard"
-                        >
-                          {copiedOtp ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5 text-neutral-400" />}
-                          <span>{copiedOtp ? 'Copied' : 'Copy'}</span>
-                        </button>
-                      </div>
-                    </div>
-                    <p className="text-[11px] text-neutral-400 leading-relaxed">
-                      Enter the 6-digit passcode above into the field below to verify your identity and set a new password.
+                <div className="p-4 rounded-2xl bg-neutral-950/80 border border-neutral-800 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-neutral-400">Code Sent To:</span>
+                    <span className="text-xs font-bold text-white truncate max-w-[210px]">{targetResetUser?.email || forgotEmail}</span>
+                  </div>
+                  <div className="flex items-start gap-2.5 pt-1">
+                    <Mail className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
+                    <p className="text-xs text-neutral-300 leading-relaxed">
+                      A 6-digit security verification code has been sent directly to your email address. Please check your inbox (and spam/junk folder), then enter the code below.
                     </p>
                   </div>
-                ) : (
-                  <div className="p-4 rounded-2xl bg-neutral-950/60 border border-neutral-800/80 space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs text-neutral-400">Code destination:</span>
-                      <span className="text-xs font-bold text-white">{targetResetUser?.email || forgotEmail}</span>
-                    </div>
-                    <p className="text-[11px] text-neutral-400">
-                      Please check your inbox (and spam/junk folder) for the 6-digit verification code.
-                    </p>
-                    {generatedOtp && (
-                      <div className="pt-2 flex items-center justify-between border-t border-neutral-800/60">
-                        <span className="text-[10px] text-neutral-500">Email delayed or offline?</span>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setEnteredOtp(generatedOtp);
-                            setIsOtpSimulated(true);
-                          }}
-                          className="text-[11px] text-red-400 hover:text-red-300 font-semibold underline underline-offset-2 cursor-pointer"
-                        >
-                          Auto-fill Verification Code
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                )}
+                </div>
 
                 <div>
                   <label className="block text-xs font-bold text-neutral-300 mb-1">
