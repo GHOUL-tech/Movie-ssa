@@ -601,6 +601,44 @@ export const markSupportMessageRead = async (messageId: string): Promise<void> =
   }
 };
 
+export const markSupportThreadAsRead = async (userId: string): Promise<void> => {
+  if (!userId || isFirestoreQuotaExhausted()) return;
+  try {
+    const supportRef = collection(db, SUPPORT_COLLECTION);
+    const snap = await getDocs(supportRef);
+    const updates: Promise<void>[] = [];
+    snap.forEach((d) => {
+      const data = d.data() as SupportMessage;
+      if (data.userId === userId && !data.read) {
+        updates.push(setDoc(d.ref, { read: true }, { merge: true }));
+      }
+    });
+    await Promise.all(updates);
+  } catch (err) {
+    if (checkQuotaError(err)) return;
+    console.error('Error marking support thread read:', err);
+  }
+};
+
+export const deleteSupportThreadFromFirebase = async (userId: string): Promise<void> => {
+  if (!userId || isFirestoreQuotaExhausted()) return;
+  try {
+    const supportRef = collection(db, SUPPORT_COLLECTION);
+    const snap = await getDocs(supportRef);
+    const deletes: Promise<void>[] = [];
+    snap.forEach((d) => {
+      const data = d.data() as SupportMessage;
+      if (data.userId === userId) {
+        deletes.push(deleteDoc(d.ref));
+      }
+    });
+    await Promise.all(deletes);
+  } catch (err) {
+    if (checkQuotaError(err)) return;
+    console.error('Error deleting support thread:', err);
+  }
+};
+
 // ==========================================
 // SYSTEM CONFIGURATION
 // ==========================================
@@ -775,7 +813,7 @@ export const subscribeToSubscriptionCodes = (callback: (codes: SubscriptionCode[
 export const redeemSubscriptionCodeInFirebase = async (
   codeString: string,
   user: User
-): Promise<{ success: boolean; message: string; tier?: SubscriptionTier; subscription?: any }> => {
+): Promise<{ success: boolean; message: string; tier?: SubscriptionTier; subscription?: any; code?: SubscriptionCode }> => {
   const cleanCode = codeString.trim().toUpperCase();
   if (!cleanCode) {
     return { success: false, message: 'Please enter a subscription code.' };
@@ -841,6 +879,17 @@ export const redeemSubscriptionCodeInFirebase = async (
       updatedAt: now,
     }), { merge: true });
 
+    const updatedCodeData: SubscriptionCode = {
+      ...codeData,
+      isRedeemed: true,
+      redeemedBy: {
+        userId: user.id,
+        userName: user.name || user.username || 'User',
+        userEmail: user.email || '',
+      },
+      redeemedAt: now,
+    };
+
     return {
       success: true,
       message: isPermanent 
@@ -848,6 +897,7 @@ export const redeemSubscriptionCodeInFirebase = async (
         : `Congratulations! ${getTierDisplayName(codeData.tier)} VIP Subscription activated!`,
       tier: codeData.tier,
       subscription: newSubscription,
+      code: updatedCodeData,
     };
   } catch (err: any) {
     if (checkQuotaError(err)) {

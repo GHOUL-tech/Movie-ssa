@@ -5,7 +5,12 @@
 
 import { User, SupportMessage, SystemSettings, SubscriptionCode, SubscriptionTier, WatchHistoryItem, WatchlistItem } from '../types';
 import * as Firebase from './firebase';
-import { dispatchUserToGoogleSheets } from './googleSheetsBackup';
+import { 
+  dispatchUserToGoogleSheets, 
+  dispatchSubscriptionCodeToGoogleSheets, 
+  dispatchSupportMessageToGoogleSheets, 
+  dispatchSettingsToGoogleSheets 
+} from './googleSheetsBackup';
 
 export interface BackendStatusResult {
   provider: 'firebase';
@@ -73,6 +78,7 @@ export async function getSystemSettingsFromBackend(): Promise<SystemSettings> {
 
 export async function saveSystemSettingsToBackend(settings: Partial<SystemSettings>): Promise<boolean> {
   await Firebase.saveSystemSettingsToFirebase(settings);
+  dispatchSettingsToGoogleSheets(settings);
   return true;
 }
 
@@ -90,6 +96,7 @@ export async function getAllSubscriptionCodesFromBackend(): Promise<Subscription
 
 export async function saveSubscriptionCodeToBackend(code: SubscriptionCode): Promise<boolean> {
   await Firebase.saveSubscriptionCodeToFirebase(code);
+  dispatchSubscriptionCodeToGoogleSheets(code);
   return true;
 }
 
@@ -101,7 +108,15 @@ export async function redeemSubscriptionCodeInBackend(
   code: string,
   user: User
 ): Promise<{ success: boolean; message: string; tier?: SubscriptionTier; isPermanent?: boolean; expiresAt?: number | null; code?: SubscriptionCode }> {
-  return await Firebase.redeemSubscriptionCodeInFirebase(code, user);
+  const result = await Firebase.redeemSubscriptionCodeInFirebase(code, user);
+  if (result.success && result.code) {
+    dispatchSubscriptionCodeToGoogleSheets(result.code);
+    const updatedUser = await Firebase.getUserFromFirebase(user.id);
+    if (updatedUser) {
+      dispatchUserToGoogleSheets(updatedUser);
+    }
+  }
+  return result;
 }
 
 export function subscribeToSubscriptionCodes(callback: (codes: SubscriptionCode[]) => void): (() => void) {
@@ -131,6 +146,19 @@ export async function sendSupportMessageToBackend(msg: Omit<SupportMessage, 'id'
     createdAt: msg.createdAt || Date.now(),
     read: !!msg.read
   });
+  
+  // Real-time mirror to Google Sheets
+  dispatchSupportMessageToGoogleSheets({
+    id: msg.id || `msg_${Date.now()}`,
+    userId: msg.userId,
+    userName: msg.userName,
+    userEmail: msg.userEmail,
+    message: msg.message,
+    sender: msg.sender,
+    createdAt: msg.createdAt || Date.now(),
+    read: !!msg.read
+  });
+
   return !!res;
 }
 
@@ -144,6 +172,14 @@ export function subscribeToUserSupportMessages(userId: string, callback: (messag
 
 export async function markSupportMessageRead(messageId: string): Promise<void> {
   await Firebase.markSupportMessageRead(messageId);
+}
+
+export async function markSupportThreadAsRead(userId: string): Promise<void> {
+  await Firebase.markSupportThreadAsRead(userId);
+}
+
+export async function deleteSupportThreadFromBackend(userId: string): Promise<void> {
+  await Firebase.deleteSupportThreadFromFirebase(userId);
 }
 
 // ==========================================

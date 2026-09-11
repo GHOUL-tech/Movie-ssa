@@ -5,14 +5,13 @@ import {
   MessageSquare, 
   Headphones, 
   Sparkles, 
-  ShieldCheck, 
   Check, 
-  Bot,
+  CheckCheck,
   User as UserIcon,
-  Film,
-  Monitor,
-  Heart,
-  RefreshCw
+  ShieldCheck,
+  Smile,
+  Zap,
+  Film
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { SupportMessage } from '../types';
@@ -37,29 +36,61 @@ const getPersistentGuestId = (): string => {
   }
 };
 
+// Subtle Web Audio notification chime when a new Admin message arrives
+const playMessageChime = () => {
+  try {
+    const AudioContextClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+    if (!AudioContextClass) return;
+    const ctx = new AudioContextClass();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(587.33, ctx.currentTime); // D5
+    osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.12); // A5
+
+    gain.gain.setValueAtTime(0.08, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.25);
+
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+
+    osc.start();
+    osc.stop(ctx.currentTime + 0.25);
+  } catch {}
+};
+
 export const LiveSupportModal: React.FC<LiveSupportModalProps> = ({ isOpen, onClose }) => {
   const { currentUser, isLoggedIn, openAuthModal } = useAuth();
   const [messages, setMessages] = useState<SupportMessage[]>([]);
   const [inputText, setInputText] = useState('');
   const [guestName, setGuestName] = useState('');
-  const [guestEmail, setGuestEmail] = useState('');
   const [sending, setSending] = useState(false);
-  const [isTyping, setIsTyping] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const previousMessageCountRef = useRef<number>(0);
 
   // Derive active userId
   const effectiveUserId = currentUser?.id || getPersistentGuestId();
 
+  // Subscribe to real-time support messages from Firestore
   useEffect(() => {
     if (!isOpen) return;
 
-    const unsubscribe = subscribeToUserSupportMessages(effectiveUserId, (msgs) => {
-      if (msgs && msgs.length > 0) {
+    const unsubscribe = subscribeToUserSupportMessages(effectiveUserId, (incomingMsgs) => {
+      if (incomingMsgs) {
         setMessages((prev) => {
-          // Merge by ID to avoid duplicates while keeping optimistic messages
-          const existingIds = new Set(msgs.map(m => m.id));
+          // Check if a new message from admin arrived
+          const prevAdminCount = prev.filter(m => m.sender === 'admin').length;
+          const newAdminCount = incomingMsgs.filter(m => m.sender === 'admin').length;
+          if (newAdminCount > prevAdminCount && prev.length > 0) {
+            playMessageChime();
+          }
+
+          // Merge by ID to avoid duplicates while preserving optimistic entries
+          const existingIds = new Set(incomingMsgs.map(m => m.id));
           const optimisticNotYetSynced = prev.filter(m => m.id.startsWith('temp_') && !existingIds.has(m.id));
-          return [...msgs, ...optimisticNotYetSynced].sort((a, b) => a.createdAt - b.createdAt);
+          return [...incomingMsgs, ...optimisticNotYetSynced].sort((a, b) => a.createdAt - b.createdAt);
         });
       }
     });
@@ -67,61 +98,32 @@ export const LiveSupportModal: React.FC<LiveSupportModalProps> = ({ isOpen, onCl
     return () => unsubscribe();
   }, [isOpen, effectiveUserId]);
 
+  // Auto-scroll to bottom on messages update
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, isTyping]);
+    if (isOpen) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [messages, isOpen]);
+
+  // Auto-focus input on modal open
+  useEffect(() => {
+    if (isOpen) {
+      setTimeout(() => {
+        inputRef.current?.focus();
+      }, 150);
+    }
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
-  const triggerAutomatedAssistantReply = (userQuery: string, senderName: string, senderEmail: string) => {
-    const q = userQuery.toLowerCase();
-    let replyText = '';
-
-    if (q.includes('server') || q.includes('1080p') || q.includes('4k') || q.includes('hd') || q.includes('buffer') || q.includes('switch')) {
-      replyText = `Hi ${senderName}! To switch servers, click the "Server" dropdown located above the player controls. Server 1 & Server 2 provide fast 1080p Ultra HD streaming. If one server is slow in your region, switching to Server 2 or 3 will instantly resolve buffering!`;
-    } else if (q.includes('safe mode') || q.includes('under 18') || q.includes('18+') || q.includes('filter') || q.includes('parental')) {
-      replyText = `Hello! Under 18 Safe Mode filters out R-rated and 18+ content automatically based on the age you set in your profile. You can toggle this anytime in Account Settings -> Safe Mode Filter.`;
-    } else if (q.includes('subtitle') || q.includes('language') || q.includes('caption') || q.includes('audio')) {
-      replyText = `Great question! You can switch subtitles by clicking the "CC / Subtitles" icon inside the video player toolbar. We support English, Spanish, French, German, and Arabic multi-tracks.`;
-    } else if (q.includes('vip') || q.includes('subscription') || q.includes('code') || q.includes('pass') || q.includes('redeem')) {
-      replyText = `VIP Subscription passes unlock commercial-free, high-bitrate streaming. You can redeem your 16-character code by clicking your profile icon -> "Redeem Pass", or purchase one directly at our official shop!`;
-    } else if (q.includes('hi') || q.includes('hello') || q.includes('hey') || q.includes('help')) {
-      replyText = `Hello ${senderName}! Admin Rahin and the Zinovis team are here to help. What movie, series, or streaming feature can we assist you with today?`;
-    }
-
-    if (replyText) {
-      setIsTyping(true);
-      setTimeout(async () => {
-        setIsTyping(false);
-        const adminMsg: SupportMessage = {
-          id: `bot_reply_${Date.now()}`,
-          userId: effectiveUserId,
-          userName: 'Admin Rahin (Support Desk)',
-          userEmail: 'support@zinovis.tv',
-          message: replyText,
-          sender: 'admin',
-          createdAt: Date.now(),
-          read: true,
-        };
-
-        // Optimistically add
-        setMessages(prev => [...prev, adminMsg]);
-
-        // Send to backend
-        try {
-          await sendSupportMessageToBackend(adminMsg);
-        } catch {}
-      }, 1200);
-    }
-  };
-
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!inputText.trim()) return;
+    const text = inputText.trim();
+    if (!text || sending) return;
 
     const senderName = currentUser?.name || currentUser?.username || guestName.trim() || 'Viewer';
-    const senderEmail = currentUser?.email || guestEmail.trim() || 'guest@zinovis.tv';
-    const msgText = inputText.trim();
+    const senderEmail = currentUser?.email || 'guest@zinovis.tv';
+    
     setInputText('');
 
     const tempId = `temp_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
@@ -131,7 +133,7 @@ export const LiveSupportModal: React.FC<LiveSupportModalProps> = ({ isOpen, onCl
       userName: senderName,
       userEmail: senderEmail,
       userAvatar: currentUser?.avatar,
-      message: msgText,
+      message: text,
       sender: 'user',
       createdAt: Date.now(),
       read: false,
@@ -139,109 +141,83 @@ export const LiveSupportModal: React.FC<LiveSupportModalProps> = ({ isOpen, onCl
 
     // Optimistic instant UI update
     setMessages(prev => [...prev, newMsg]);
-
     setSending(true);
+
     try {
       await sendSupportMessageToBackend({
         userId: effectiveUserId,
         userName: senderName,
         userEmail: senderEmail,
         userAvatar: currentUser?.avatar,
-        message: msgText,
+        message: text,
         sender: 'user',
         createdAt: Date.now(),
         read: false,
       });
     } catch (err) {
-      console.warn('Live support dispatch notice:', err);
+      console.warn('Realtime message dispatch error:', err);
     } finally {
       setSending(false);
+      setTimeout(() => inputRef.current?.focus(), 50);
     }
-
-    // Trigger intelligent instant reply if applicable
-    triggerAutomatedAssistantReply(msgText, senderName, senderEmail);
   };
 
-  const handleQuickQuestion = async (prompt: string) => {
-    const senderName = currentUser?.name || currentUser?.username || guestName.trim() || 'Viewer';
-    const senderEmail = currentUser?.email || guestEmail.trim() || 'guest@zinovis.tv';
-
-    const tempId = `temp_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
-    const newMsg: SupportMessage = {
-      id: tempId,
-      userId: effectiveUserId,
-      userName: senderName,
-      userEmail: senderEmail,
-      userAvatar: currentUser?.avatar,
-      message: prompt,
-      sender: 'user',
-      createdAt: Date.now(),
-      read: false,
-    };
-
-    setMessages(prev => [...prev, newMsg]);
-
-    try {
-      await sendSupportMessageToBackend({
-        userId: effectiveUserId,
-        userName: senderName,
-        userEmail: senderEmail,
-        userAvatar: currentUser?.avatar,
-        message: prompt,
-        sender: 'user',
-        createdAt: Date.now(),
-        read: false,
-      });
-    } catch {}
-
-    triggerAutomatedAssistantReply(prompt, senderName, senderEmail);
+  const handleSelectQuickPrompt = (prompt: string) => {
+    setInputText(prompt);
+    inputRef.current?.focus();
   };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-neutral-950/85 backdrop-blur-md animate-fadeIn">
       <div 
-        className="relative w-full max-w-md bg-neutral-900 border border-neutral-800 rounded-3xl shadow-2xl overflow-hidden flex flex-col h-[580px]"
+        className="relative w-full max-w-lg bg-neutral-900 border border-neutral-800 rounded-3xl shadow-2xl overflow-hidden flex flex-col h-[600px] max-h-[90vh]"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="p-4 border-b border-neutral-800 bg-neutral-950/90 flex items-center justify-between">
+        <div className="p-4 border-b border-neutral-800 bg-neutral-950/95 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-red-600 via-rose-500 to-pink-600 p-0.5 shadow-lg shadow-red-500/20 flex-shrink-0">
-              <div className="w-full h-full bg-neutral-950 rounded-[14px] flex items-center justify-center">
-                <Headphones className="w-5 h-5 text-red-500" />
+            <div className="relative">
+              <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-red-600 via-rose-500 to-pink-600 p-0.5 shadow-lg shadow-red-500/20 flex-shrink-0">
+                <div className="w-full h-full bg-neutral-950 rounded-[14px] flex items-center justify-center">
+                  <Headphones className="w-5 h-5 text-red-500" />
+                </div>
               </div>
+              <span className="absolute -bottom-0.5 -right-0.5 flex h-3 w-3">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500 border-2 border-neutral-950"></span>
+              </span>
             </div>
+
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="text-sm font-black text-white tracking-wide">Zinovis Live Support</h3>
-                <span className="flex h-2 w-2 relative">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                <span className="px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 text-[10px] font-bold">
+                  Online
                 </span>
               </div>
-              <p className="text-[11px] text-neutral-400">Admin Rahin &amp; Instant Assistance Desk</p>
+              <p className="text-[11px] text-neutral-400">Direct real-time chat with <strong className="text-neutral-200">Admin Rahin</strong></p>
             </div>
           </div>
 
           <button
             onClick={onClose}
-            className="p-2 rounded-full bg-neutral-800 hover:bg-neutral-700 text-neutral-400 hover:text-white transition-colors"
+            className="p-2 rounded-full bg-neutral-800 hover:bg-neutral-700 text-neutral-400 hover:text-white transition-colors cursor-pointer"
             title="Close"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
-        {/* Guest prompt if not logged in and no messages yet */}
+        {/* Guest Sign-In Notice */}
         {!isLoggedIn && messages.length === 0 && (
-          <div className="p-3 bg-neutral-950/60 border-b border-neutral-800 text-xs text-neutral-300 flex items-center justify-between gap-2">
-            <span>Have an account? Log in to sync chat across devices.</span>
+          <div className="px-4 py-2.5 bg-neutral-950/70 border-b border-neutral-800 text-xs text-neutral-300 flex items-center justify-between gap-2">
+            <span className="text-[11px]">Chatting as Guest. Sign in to keep chat history synced across devices.</span>
             <button
               onClick={() => {
                 onClose();
                 openAuthModal('login');
               }}
-              className="px-2.5 py-1 rounded-lg bg-red-600 hover:bg-red-500 text-white font-bold text-[10px] whitespace-nowrap"
+              className="px-2.5 py-1 rounded-lg bg-red-600 hover:bg-red-500 text-white font-bold text-[10px] whitespace-nowrap cursor-pointer transition-all"
             >
               Sign In
             </button>
@@ -249,38 +225,38 @@ export const LiveSupportModal: React.FC<LiveSupportModalProps> = ({ isOpen, onCl
         )}
 
         {/* Messages Scroll Area */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-3">
-          {/* Welcome Card */}
-          <div className="p-3.5 rounded-2xl bg-neutral-950 border border-neutral-800/80 text-xs space-y-2">
+        <div className="flex-1 overflow-y-auto p-4 space-y-3.5 bg-neutral-900/40">
+          {/* Welcome Card & Topic Prompts */}
+          <div className="p-4 rounded-2xl bg-neutral-950 border border-neutral-800/80 text-xs space-y-2.5 shadow-sm">
             <div className="flex items-center gap-2 font-bold text-white">
               <Sparkles className="w-4 h-4 text-amber-400" />
-              <span>Welcome to Zinovis Instant Assistance</span>
+              <span>Real-Time Support Desk</span>
             </div>
             <p className="text-neutral-400 leading-relaxed text-[11px]">
-              Need help with HD streaming servers, audio/subtitles, movie requests, or your 18+ Safe Mode filter settings? Ask below and Admin Rahin will respond live!
+              Have a question about HD streaming servers, VIP subscription passcodes, subtitle tracks, or want to request a movie? Send a message and Admin Rahin will respond directly.
             </p>
 
-            <div className="pt-2 flex flex-wrap gap-1.5">
+            <div className="pt-1.5 flex flex-wrap gap-1.5">
               <button
                 type="button"
-                onClick={() => handleQuickQuestion('How do I switch to Server 1 for 1080p Ultra HD?')}
-                className="px-2.5 py-1 rounded-lg bg-neutral-900 hover:bg-neutral-800 border border-neutral-700/60 text-[10px] text-neutral-300 transition-colors"
+                onClick={() => handleSelectQuickPrompt('Hi Admin Rahin! I need help switching to Server 1 for 1080p Ultra HD streaming.')}
+                className="px-2.5 py-1 rounded-xl bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 hover:border-neutral-700 text-[11px] text-neutral-300 transition-all cursor-pointer"
               >
-                📺 How to switch servers?
+                📺 Server / Buffering Help
               </button>
               <button
                 type="button"
-                onClick={() => handleQuickQuestion('How does the under 18 safe mode content filter work?')}
-                className="px-2.5 py-1 rounded-lg bg-neutral-900 hover:bg-neutral-800 border border-neutral-700/60 text-[10px] text-neutral-300 transition-colors"
+                onClick={() => handleSelectQuickPrompt('Hello! I have a question about redeeming my VIP subscription passcode.')}
+                className="px-2.5 py-1 rounded-xl bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 hover:border-neutral-700 text-[11px] text-neutral-300 transition-all cursor-pointer"
               >
-                🛡️ Under 18 Safe Mode info
+                👑 VIP Passcode Inquiry
               </button>
               <button
                 type="button"
-                onClick={() => handleQuickQuestion('Can you add subtitle tracks for my language?')}
-                className="px-2.5 py-1 rounded-lg bg-neutral-900 hover:bg-neutral-800 border border-neutral-700/60 text-[10px] text-neutral-300 transition-colors"
+                onClick={() => handleSelectQuickPrompt('Can you please add a new movie or TV series to the library?')}
+                className="px-2.5 py-1 rounded-xl bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 hover:border-neutral-700 text-[11px] text-neutral-300 transition-all cursor-pointer"
               >
-                💬 Multi-subtitles query
+                🎬 Request a Movie / Show
               </button>
             </div>
           </div>
@@ -288,53 +264,61 @@ export const LiveSupportModal: React.FC<LiveSupportModalProps> = ({ isOpen, onCl
           {/* Messages list */}
           {messages.map((msg) => {
             const isAdmin = msg.sender === 'admin';
+            const isTemp = msg.id.startsWith('temp_');
+
             return (
               <div 
                 key={msg.id}
-                className={`flex flex-col ${isAdmin ? 'items-start' : 'items-end'}`}
+                className={`flex flex-col ${isAdmin ? 'items-start' : 'items-end'} animate-fadeIn`}
               >
-                <div className="flex items-center gap-1.5 mb-1 text-[10px] text-neutral-400">
-                  <span>{isAdmin ? 'Admin (Rahin)' : (msg.userName || 'You')}</span>
+                <div className="flex items-center gap-1.5 mb-1 text-[10px] text-neutral-400 px-1">
+                  {isAdmin ? (
+                    <span className="font-bold text-red-400 flex items-center gap-1">
+                      <ShieldCheck className="w-3 h-3 text-red-500" />
+                      <span>Admin (Rahin)</span>
+                    </span>
+                  ) : (
+                    <span className="font-semibold text-neutral-300">{msg.userName || 'You'}</span>
+                  )}
                   <span>•</span>
                   <span>{new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                 </div>
+
                 <div 
                   className={`max-w-[85%] px-4 py-2.5 rounded-2xl text-xs sm:text-sm leading-relaxed ${
                     isAdmin 
-                      ? 'bg-neutral-800 text-white border border-neutral-700 rounded-tl-none shadow-md' 
-                      : 'bg-red-600 text-white rounded-tr-none shadow-lg shadow-red-600/20'
+                      ? 'bg-neutral-800 text-neutral-100 border border-neutral-700/80 rounded-tl-none shadow-md' 
+                      : 'bg-gradient-to-r from-red-600 to-rose-600 text-white rounded-tr-none shadow-lg shadow-red-600/15'
                   }`}
                 >
-                  {msg.message}
+                  <p className="whitespace-pre-wrap break-words">{msg.message}</p>
+                  
+                  <div className={`text-[9px] mt-1 flex items-center justify-end gap-1 ${isAdmin ? 'text-neutral-400' : 'text-red-200'}`}>
+                    {isAdmin ? (
+                      <span>Official Staff Reply</span>
+                    ) : isTemp ? (
+                      <span>Sending...</span>
+                    ) : (
+                      <span className="flex items-center gap-0.5">
+                        <CheckCheck className="w-3 h-3 text-red-200" />
+                        <span>Delivered</span>
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
             );
           })}
 
-          {/* Live Typing Indicator */}
-          {isTyping && (
-            <div className="flex flex-col items-start">
-              <div className="flex items-center gap-1.5 mb-1 text-[10px] text-neutral-400">
-                <span>Admin (Rahin)</span>
-                <span>•</span>
-                <span>typing...</span>
-              </div>
-              <div className="px-4 py-2.5 rounded-2xl text-xs bg-neutral-800 border border-neutral-700 text-neutral-300 flex items-center gap-1.5 rounded-tl-none">
-                <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-bounce" style={{ animationDelay: '0ms' }} />
-                <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-bounce" style={{ animationDelay: '150ms' }} />
-                <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-bounce" style={{ animationDelay: '300ms' }} />
-              </div>
-            </div>
-          )}
-
           <div ref={messagesEndRef} />
         </div>
 
         {/* Input Form */}
-        <form onSubmit={handleSendMessage} className="p-3 border-t border-neutral-800 bg-neutral-950/90 flex items-center gap-2">
+        <form onSubmit={handleSendMessage} className="p-3 border-t border-neutral-800 bg-neutral-950/95 flex items-center gap-2">
           <input
+            ref={inputRef}
             type="text"
-            placeholder="Type your message to support..."
+            placeholder="Type your message to Admin Rahin..."
             value={inputText}
             onChange={(e) => setInputText(e.target.value)}
             className="flex-1 px-4 py-2.5 bg-neutral-900 border border-neutral-800 focus:border-red-500 rounded-xl text-xs sm:text-sm text-white placeholder:text-neutral-500 focus:outline-none focus:ring-1 focus:ring-red-500"
@@ -342,14 +326,13 @@ export const LiveSupportModal: React.FC<LiveSupportModalProps> = ({ isOpen, onCl
           <button
             type="submit"
             disabled={!inputText.trim() || sending}
-            className="p-2.5 rounded-xl bg-red-600 hover:bg-red-500 text-white disabled:opacity-50 transition-all flex-shrink-0"
+            className="p-2.5 rounded-xl bg-red-600 hover:bg-red-500 text-white disabled:opacity-40 transition-all flex-shrink-0 cursor-pointer shadow-lg shadow-red-600/20"
             title="Send Message"
           >
-            <Send className="w-4 h-4" />
+            <Send className={`w-4 h-4 ${sending ? 'animate-pulse' : ''}`} />
           </button>
         </form>
       </div>
     </div>
   );
 };
-

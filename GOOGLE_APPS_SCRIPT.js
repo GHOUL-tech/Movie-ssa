@@ -1,21 +1,21 @@
 /**
  * =========================================================================
- * ZINOVIS STREAMING PLATFORM - GOOGLE APPS SCRIPT BACKUP WEB APP
+ * ZINOVIS STREAMING ENGINE - GOOGLE SHEETS BACKUP & RECOVERY WEB APP
  * =========================================================================
  * 
- * QUICK SETUP (30 Seconds):
- * 1. Open Google Sheets at https://sheets.new
- * 2. Title the sheet: "Zinovis Cloud Streaming Backup"
- * 3. In the top menu, go to: Extensions > Apps Script
- * 4. Paste this ENTIRE file into Code.gs (replacing existing code)
+ * INSTRUCTIONS TO DEPLOY (Takes ~30 seconds):
+ * 1. Open Google Sheets (https://sheets.new)
+ * 2. Rename the Spreadsheet to "Zinovis Streaming Cloud Backup"
+ * 3. In the top menu, click: Extensions > Apps Script
+ * 4. Delete any code in Code.gs and paste THIS entire script file.
  * 5. Click "Deploy" > "New deployment"
- * 6. Select type: "Web app"
- * 7. Set configuration:
- *    - Description: "Zinovis Backup API"
- *    - Execute as: "Me"
- *    - Who has access: "Anyone"
- * 8. Click "Deploy", review/authorize permissions, and copy your Web App URL
- * 9. Paste the Web App URL in Zinovis Admin Panel > Google Sheets Backup!
+ * 6. Under "Select type", choose "Web app"
+ * 7. Set:
+ *    - Description: "Zinovis Realtime Backup Webhook"
+ *    - Execute as: "Me" (your email)
+ *    - Who has access: "Anyone" (Required so your app can post realtime data)
+ * 8. Click "Deploy", authorize permissions, and COPY the Web App URL.
+ * 9. Paste the Web App URL into the Zinovis Admin Panel > Google Sheets Backup!
  */
 
 function doGet(e) {
@@ -50,18 +50,18 @@ function handleRequest(e, method) {
       output = {
         success: true,
         status: 'ok',
-        message: 'Zinovis Google Sheets Backup System is online and healthy!',
+        message: 'Zinovis Google Sheets Real-Time Backup System is online and healthy!',
         spreadsheetTitle: ss.getName(),
         spreadsheetUrl: ss.getUrl(),
         timestamp: new Date().getTime()
       };
     }
-    // 2. FULL DATABASE BACKUP (USERS, VIP CODES, SETTINGS, SUPPORT TICKETS)
+    // 2. FULL DATABASE BACKUP
     else if (action === 'backupAll') {
       var data = params.data || {};
       var stats = { usersCount: 0, codesCount: 0, settingsUpdated: false, messagesCount: 0 };
 
-      // A. Backup Users Tab
+      // A. Backup Users
       if (data.users && Array.isArray(data.users)) {
         var usersSheet = getOrCreateSheet(ss, 'Users', [
           'User ID', 'Username', 'Full Name', 'Email', 'Country', 'Age', 
@@ -94,7 +94,7 @@ function handleRequest(e, method) {
         }
       }
 
-      // B. Backup VIP Passcodes Tab
+      // B. Backup VIP Passcodes
       if (data.subscriptionCodes && Array.isArray(data.subscriptionCodes)) {
         var codesSheet = getOrCreateSheet(ss, 'Subscription_Codes', [
           'Code ID', 'Passcode Key', 'Tier', 'Duration (Days)', 
@@ -107,7 +107,7 @@ function handleRequest(e, method) {
             c.code || '',
             c.tier || '',
             c.durationDays || 0,
-            c.isRedeemed || 'Active',
+            c.isRedeemed || 'Active (Available)',
             c.redeemedBy || '',
             c.redeemedAt || '',
             c.createdAt || '',
@@ -123,7 +123,7 @@ function handleRequest(e, method) {
         }
       }
 
-      // C. Backup System Settings Tab
+      // C. Backup System Settings
       if (data.settings) {
         var settingsSheet = getOrCreateSheet(ss, 'Settings', [
           'Setting Key', 'Value', 'Last Updated'
@@ -139,7 +139,7 @@ function handleRequest(e, method) {
         stats.settingsUpdated = true;
       }
 
-      // D. Backup Support Messages Tab
+      // D. Backup Support Messages
       if (data.supportMessages && Array.isArray(data.supportMessages)) {
         var supportSheet = getOrCreateSheet(ss, 'Support_Tickets', [
           'Message ID', 'User ID', 'User Name', 'Email', 'Sender', 'Message Text', 'Read Status', 'Created Date'
@@ -166,7 +166,7 @@ function handleRequest(e, method) {
       }
 
       // Log Backup Activity
-      logBackupActivity(ss, 'Full Backup', 'Synced ' + stats.usersCount + ' users, ' + stats.codesCount + ' codes.');
+      logBackupActivity(ss, 'Full Snapshot Backup', 'Synced ' + stats.usersCount + ' users, ' + stats.codesCount + ' codes.');
 
       output = {
         success: true,
@@ -177,7 +177,7 @@ function handleRequest(e, method) {
         timestamp: new Date().getTime()
       };
     }
-    // 3. SINGLE USER UPSERT (REAL-TIME AUTO BACKUP)
+    // 3. REAL-TIME USER UPSERT
     else if (action === 'upsertUser' && params.user) {
       var u = params.user;
       var uSheet = getOrCreateSheet(ss, 'Users', [
@@ -220,9 +220,87 @@ function handleRequest(e, method) {
         uSheet.appendRow(userRowData);
       }
 
-      output = { success: true, message: 'User updated in Google Sheets' };
+      logBackupActivity(ss, 'Realtime User Sync', 'Upserted user: ' + (u.name || u.username || u.id));
+      output = { success: true, message: 'User updated in Google Sheets in realtime' };
     }
-    // 4. RETRIEVE BACKUP DATA (DISASTER RECOVERY / RESTORE)
+    // 4. REAL-TIME VIP PASSCODE UPSERT
+    else if (action === 'upsertSubscriptionCode' && params.code) {
+      var c = params.code;
+      var cSheet = getOrCreateSheet(ss, 'Subscription_Codes', [
+        'Code ID', 'Passcode Key', 'Tier', 'Duration (Days)', 
+        'Status', 'Redeemed By', 'Redeemed Date', 'Created Date', 'Notes', 'Last Synced'
+      ], '#831843');
+
+      var foundCodeRow = -1;
+      var lastCodeRow = cSheet.getLastRow();
+      if (lastCodeRow > 1) {
+        var codeIds = cSheet.getRange(2, 1, lastCodeRow - 1, 2).getValues();
+        for (var j = 0; j < codeIds.length; j++) {
+          if (codeIds[j][0] === c.id || codeIds[j][1] === c.code) {
+            foundCodeRow = j + 2;
+            break;
+          }
+        }
+      }
+
+      var codeRowData = [
+        c.id || '',
+        c.code || '',
+        c.tier || '',
+        c.durationDays || 0,
+        c.isRedeemed || 'Active (Available)',
+        c.redeemedBy || '',
+        c.redeemedAt || '',
+        c.createdAt || '',
+        c.note || '',
+        new Date().toISOString()
+      ];
+
+      if (foundCodeRow > 1) {
+        cSheet.getRange(foundCodeRow, 1, 1, codeRowData.length).setValues([codeRowData]);
+      } else {
+        cSheet.appendRow(codeRowData);
+      }
+
+      logBackupActivity(ss, 'Realtime VIP Code Sync', 'Updated code: ' + (c.code || c.id));
+      output = { success: true, message: 'VIP code updated in Google Sheets in realtime' };
+    }
+    // 5. REAL-TIME SUPPORT MESSAGE APPEND
+    else if (action === 'upsertSupportMessage' && params.message) {
+      var m = params.message;
+      var supSheet = getOrCreateSheet(ss, 'Support_Tickets', [
+        'Message ID', 'User ID', 'User Name', 'Email', 'Sender', 'Message Text', 'Read Status', 'Created Date'
+      ], '#312e81');
+
+      supSheet.appendRow([
+        m.id || ('msg_' + Date.now()),
+        m.userId || '',
+        m.userName || '',
+        m.userEmail || '',
+        m.sender || 'user',
+        m.message || '',
+        m.read || 'No',
+        m.createdAt || new Date().toISOString()
+      ]);
+
+      output = { success: true, message: 'Support message logged to Google Sheets in realtime' };
+    }
+    // 6. REAL-TIME SETTINGS UPSERT
+    else if (action === 'upsertSettings' && params.settings) {
+      var setSheet = getOrCreateSheet(ss, 'Settings', [
+        'Setting Key', 'Value', 'Last Updated'
+      ], '#065f46');
+
+      clearSheetRowsPreserveHeader(setSheet);
+      var sRows = [
+        ['Subscription Gate Required', params.settings.subscriptionRequired ? 'Yes' : 'No', new Date().toISOString()],
+        ['VIP Store Shop URL', params.settings.shopUrl || '', new Date().toISOString()],
+        ['Last Engine Backup Timestamp', new Date().toISOString(), new Date().toISOString()]
+      ];
+      setSheet.getRange(2, 1, sRows.length, sRows[0].length).setValues(sRows);
+      output = { success: true, message: 'Settings synced to Google Sheets in realtime' };
+    }
+    // 7. RETRIEVE BACKUP DATA (DISASTER RECOVERY / RESTORE)
     else if (action === 'getBackupData') {
       var restoredUsers = [];
       var restoredCodes = [];
@@ -250,6 +328,27 @@ function handleRequest(e, method) {
               } : undefined,
               watchHistory: [],
               watchLater: []
+            });
+          }
+        }
+      }
+
+      var cSheetObj = ss.getSheetByName('Subscription_Codes');
+      if (cSheetObj && cSheetObj.getLastRow() > 1) {
+        var cValues = cSheetObj.getRange(2, 1, cSheetObj.getLastRow() - 1, 10).getValues();
+        for (var l = 0; l < cValues.length; l++) {
+          var cRow = cValues[l];
+          if (cRow[0] || cRow[1]) {
+            restoredCodes.push({
+              id: String(cRow[0] || ('code_' + l)),
+              code: String(cRow[1]),
+              tier: (cRow[2] || '1-Month VIP'),
+              durationDays: Number(cRow[3] || 30),
+              isRedeemed: cRow[4] === 'Redeemed',
+              redeemedBy: cRow[5] ? { userName: String(cRow[5]), userEmail: '' } : undefined,
+              redeemedAt: cRow[6] ? new Date(cRow[6]).getTime() : undefined,
+              createdAt: cRow[7] ? new Date(cRow[7]).getTime() : new Date().getTime(),
+              note: String(cRow[8] || '')
             });
           }
         }

@@ -71,7 +71,9 @@ import {
   deleteSubscriptionCodeFromBackend,
   saveUserToBackend,
   testBackendConnection,
-  saveSystemSettingsToBackend
+  saveSystemSettingsToBackend,
+  markSupportThreadAsRead,
+  deleteSupportThreadFromBackend
 } from '../services/backendService';
 import { 
   isFirestoreQuotaExhausted,
@@ -858,6 +860,16 @@ export const AdminPanel: React.FC = () => {
     return supportThreads.find(t => t.userId === selectedUserForChat) || null;
   }, [supportThreads, selectedUserForChat]);
 
+  const adminMessagesEndRef = React.useRef<HTMLDivElement>(null);
+
+  // Auto scroll and mark read when active chat messages change
+  useEffect(() => {
+    if (selectedUserForChat) {
+      markSupportThreadAsRead(selectedUserForChat).catch(() => {});
+      adminMessagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [selectedUserForChat, activeChatMessages]);
+
   // Send admin reply
   const handleSendAdminReply = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -879,6 +891,19 @@ export const AdminPanel: React.FC = () => {
       createdAt: Date.now(),
       read: true,
     });
+  };
+
+  // Delete/Clear support conversation thread
+  const handleDeleteSupportThread = async (userId: string) => {
+    if (!window.confirm('Are you sure you want to clear this support conversation?')) return;
+    try {
+      await deleteSupportThreadFromBackend(userId);
+      if (selectedUserForChat === userId) {
+        setSelectedUserForChat(null);
+      }
+    } catch (err) {
+      console.error('Failed to delete support thread:', err);
+    }
   };
 
   return (
@@ -2371,10 +2396,22 @@ export const AdminPanel: React.FC = () => {
                         </div>
                       </div>
 
-                      <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[10px] font-medium flex items-center gap-1">
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
-                        Live Support Connected
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteSupportThread(selectedUserForChat)}
+                          className="px-2.5 py-1 rounded-lg bg-neutral-800 hover:bg-red-500/20 text-neutral-400 hover:text-red-400 border border-neutral-700 hover:border-red-500/30 text-[11px] font-medium transition-all flex items-center gap-1 cursor-pointer"
+                          title="Clear conversation"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                          <span>Clear Chat</span>
+                        </button>
+
+                        <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[10px] font-medium flex items-center gap-1">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+                          Realtime Connected
+                        </span>
+                      </div>
                     </div>
 
                     {/* Messages Scroll Area */}
@@ -2396,11 +2433,45 @@ export const AdminPanel: React.FC = () => {
                                 ? 'bg-red-600 text-white rounded-br-none shadow-lg shadow-red-600/20' 
                                 : 'bg-neutral-800 text-neutral-100 rounded-bl-none border border-neutral-700'
                             }`}>
-                              {msg.message}
+                              <p className="whitespace-pre-wrap break-words">{msg.message}</p>
                             </div>
                           </div>
                         );
                       })}
+                      <div ref={adminMessagesEndRef} />
+                    </div>
+
+                    {/* Quick Canned Replies for Admin */}
+                    <div className="px-3 pt-2 pb-1 bg-neutral-950/80 border-t border-neutral-850 flex items-center gap-1.5 overflow-x-auto text-[11px]">
+                      <span className="text-neutral-500 text-[10px] font-bold uppercase tracking-wider flex-shrink-0">Quick Reply:</span>
+                      <button
+                        type="button"
+                        onClick={() => setReplyText('👋 Hello! How can I assist you with Zinovis streaming today?')}
+                        className="px-2.5 py-1 rounded-lg bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 hover:border-neutral-700 text-neutral-300 whitespace-nowrap cursor-pointer transition-all"
+                      >
+                        👋 Greeting
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setReplyText('⚡ Please switch to Server 1 or 2 from the server selector dropdown above the player for smooth 1080p Ultra HD streaming.')}
+                        className="px-2.5 py-1 rounded-lg bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 hover:border-neutral-700 text-neutral-300 whitespace-nowrap cursor-pointer transition-all"
+                      >
+                        ⚡ Server 1/2 HD
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setReplyText('👑 Your VIP subscription pass has been verified and active access is granted!')}
+                        className="px-2.5 py-1 rounded-lg bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 hover:border-neutral-700 text-neutral-300 whitespace-nowrap cursor-pointer transition-all"
+                      >
+                        👑 VIP Activated
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setReplyText('🎬 Thank you for the request! I have queued this title to be added to our movie library.')}
+                        className="px-2.5 py-1 rounded-lg bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 hover:border-neutral-700 text-neutral-300 whitespace-nowrap cursor-pointer transition-all"
+                      >
+                        🎬 Title Queued
+                      </button>
                     </div>
 
                     {/* Chat Input Bar */}
@@ -2415,7 +2486,7 @@ export const AdminPanel: React.FC = () => {
                       <button
                         type="submit"
                         disabled={!replyText.trim()}
-                        className="p-2.5 rounded-xl bg-red-600 hover:bg-red-500 text-white disabled:opacity-50 transition-all flex-shrink-0"
+                        className="p-2.5 rounded-xl bg-red-600 hover:bg-red-500 text-white disabled:opacity-50 transition-all flex-shrink-0 cursor-pointer shadow-md shadow-red-600/20"
                         title="Send Reply"
                       >
                         <Send className="w-4 h-4" />
