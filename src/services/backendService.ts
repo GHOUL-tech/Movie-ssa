@@ -5,6 +5,7 @@
 
 import { User, SupportMessage, SystemSettings, SubscriptionCode, SubscriptionTier, WatchHistoryItem, WatchlistItem } from '../types';
 import * as Firebase from './firebase';
+import { dispatchUserToGoogleSheets } from './googleSheetsBackup';
 
 export interface BackendStatusResult {
   provider: 'firebase';
@@ -41,6 +42,8 @@ export async function testBackendConnection(): Promise<BackendStatusResult> {
 
 export async function saveUserToBackend(user: User): Promise<boolean> {
   await Firebase.saveUserToFirebase(user);
+  // Secondary background backup to Google Sheets if configured
+  dispatchUserToGoogleSheets(user);
   return true;
 }
 

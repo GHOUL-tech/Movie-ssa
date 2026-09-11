@@ -160,6 +160,9 @@ export interface SystemSettings {
   subscriptionRequired: boolean;
   shopUrl: string;
   updatedAt: number;
+  googleSheetsScriptUrl?: string;
+  googleSheetsAutoBackup?: boolean;
+  googleSheetsLastSync?: number;
 }
 
 export interface User {

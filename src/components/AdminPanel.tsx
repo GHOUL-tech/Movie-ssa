@@ -50,7 +50,13 @@ import {
   Server,
   HardDrive,
   Layers,
-  Activity
+  Activity,
+  FileSpreadsheet,
+  UploadCloud,
+  DownloadCloud,
+  Code2,
+  FileCheck,
+  Share2
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -64,13 +70,26 @@ import {
   saveSubscriptionCodeToBackend,
   deleteSubscriptionCodeFromBackend,
   saveUserToBackend,
-  testBackendConnection
+  testBackendConnection,
+  saveSystemSettingsToBackend
 } from '../services/backendService';
 import { 
   isFirestoreQuotaExhausted,
   onQuotaStatusChange,
   testFirestoreConnection
 } from '../services/firebase';
+import { 
+  getGoogleSheetsScriptUrl, 
+  setGoogleSheetsScriptUrl, 
+  isGoogleSheetsAutoBackupEnabled, 
+  setGoogleSheetsAutoBackup,
+  isGoogleSheetsConfigured,
+  testGoogleSheetsConnection, 
+  pushBackupToGoogleSheets, 
+  fetchBackupFromGoogleSheets, 
+  GOOGLE_APPS_SCRIPT_CODE,
+  GoogleSheetsStatusResult
+} from '../services/googleSheetsBackup';
 import { 
   getAllUsers, 
   deleteUserAccount,
@@ -108,7 +127,7 @@ export const AdminPanel: React.FC = () => {
   } = useAuth();
   const navigate = useNavigate();
 
-  const [activeTab, setActiveTab] = useState<'analytics' | 'users' | 'movies' | 'subscriptions' | 'support'>('analytics');
+  const [activeTab, setActiveTab] = useState<'analytics' | 'users' | 'movies' | 'subscriptions' | 'support' | 'backup'>('analytics');
   const [users, setUsers] = useState<User[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(true);
   const [trendingMedia, setTrendingMedia] = useState<MediaItem[]>([]);
@@ -156,6 +175,19 @@ export const AdminPanel: React.FC = () => {
   const [isSyncingPending, setIsSyncingPending] = useState(false);
   const [syncPendingResult, setSyncPendingResult] = useState<string | null>(null);
   const [pendingUsers, setPendingUsers] = useState<User[]>(getPendingUserSyncs());
+
+  // Google Sheets & Google Apps Script Secondary Backup System State
+  const [googleSheetsUrl, setGoogleSheetsUrlState] = useState<string>(getGoogleSheetsScriptUrl());
+  const [googleSheetsAutoBackup, setGoogleSheetsAutoBackupState] = useState<boolean>(isGoogleSheetsAutoBackupEnabled());
+  const [isTestingGoogleSheets, setIsTestingGoogleSheets] = useState(false);
+  const [googleSheetsStatus, setGoogleSheetsStatus] = useState<GoogleSheetsStatusResult | null>(null);
+  const [isPushingToSheets, setIsPushingToSheets] = useState(false);
+  const [sheetsPushMessage, setSheetsPushMessage] = useState<{ success: boolean; message: string } | null>(null);
+  const [isPullingFromSheets, setIsPullingFromSheets] = useState(false);
+  const [sheetsPullMessage, setSheetsPullMessage] = useState<{ success: boolean; message: string } | null>(null);
+  const [showAppsScriptModal, setShowAppsScriptModal] = useState(false);
+  const [copiedAppsScript, setCopiedAppsScript] = useState(false);
+  const [isSavingSheetsSettings, setIsSavingSheetsSettings] = useState(false);
 
   // Subscription Codes Backup & Restore
   const [restoringCodes, setRestoringCodes] = useState(false);
@@ -295,6 +327,103 @@ export const AdminPanel: React.FC = () => {
     } finally {
       setRestoringCodes(false);
     }
+  };
+
+  // Google Sheets Backup Action Handlers
+  const handleSaveGoogleSheetsConfig = async () => {
+    setIsSavingSheetsSettings(true);
+    try {
+      setGoogleSheetsScriptUrl(googleSheetsUrl);
+      setGoogleSheetsAutoBackup(googleSheetsAutoBackup);
+      await saveSystemSettingsToBackend({
+        googleSheetsScriptUrl: googleSheetsUrl.trim(),
+        googleSheetsAutoBackup: googleSheetsAutoBackup
+      }).catch(console.warn);
+      
+      setSheetsPushMessage({ success: true, message: 'Google Sheets backup configuration saved successfully!' });
+      
+      if (googleSheetsUrl.trim()) {
+        handleTestGoogleSheets(googleSheetsUrl.trim());
+      }
+    } catch (err: any) {
+      setSheetsPushMessage({ success: false, message: 'Failed to save configuration: ' + (err?.message || err) });
+    } finally {
+      setIsSavingSheetsSettings(false);
+    }
+  };
+
+  const handleTestGoogleSheets = async (customUrl?: string) => {
+    setIsTestingGoogleSheets(true);
+    setGoogleSheetsStatus(null);
+    try {
+      const targetUrl = customUrl || googleSheetsUrl;
+      const res = await testGoogleSheetsConnection(targetUrl);
+      setGoogleSheetsStatus(res);
+    } catch (err: any) {
+      setGoogleSheetsStatus({ connected: false, message: err?.message || 'Connection test failed' });
+    } finally {
+      setIsTestingGoogleSheets(false);
+    }
+  };
+
+  const handlePushToGoogleSheets = async () => {
+    setIsPushingToSheets(true);
+    setSheetsPushMessage(null);
+    try {
+      const res = await pushBackupToGoogleSheets(googleSheetsUrl, {
+        users,
+        codes: subscriptionCodes,
+        supportMessages
+      });
+      setSheetsPushMessage(res);
+      if (res.success) {
+        setGoogleSheetsStatus({
+          connected: true,
+          message: 'Active Backup Synced',
+          timestamp: Date.now()
+        });
+      }
+    } catch (err: any) {
+      setSheetsPushMessage({ success: false, message: 'Push failed: ' + (err?.message || err) });
+    } finally {
+      setIsPushingToSheets(false);
+    }
+  };
+
+  const handlePullFromGoogleSheets = async () => {
+    if (!window.confirm('Restore accounts and passcodes from Google Sheets? This will synchronize records with your database.')) {
+      return;
+    }
+    setIsPullingFromSheets(true);
+    setSheetsPullMessage(null);
+    try {
+      const res = await fetchBackupFromGoogleSheets(googleSheetsUrl);
+      if (res.success && res.data) {
+        if (res.data.users && res.data.users.length > 0) {
+          saveUsersLocally(res.data.users);
+          loadUsers();
+        }
+        setSheetsPullMessage({
+          success: true,
+          message: res.message || `Successfully restored ${res.data.users?.length || 0} account(s) from Google Sheets!`
+        });
+      } else {
+        setSheetsPullMessage({
+          success: false,
+          message: res.message || 'No backup records found to restore from Google Sheets.'
+        });
+      }
+    } catch (err: any) {
+      setSheetsPullMessage({ success: false, message: 'Restore failed: ' + (err?.message || err) });
+    } finally {
+      setIsPullingFromSheets(false);
+    }
+  };
+
+  const handleCopyAppsScript = () => {
+    navigator.clipboard.writeText(GOOGLE_APPS_SCRIPT_CODE);
+    setCopiedAppsScript(true);
+    setTimeout(() => setCopiedAppsScript(false), 3000);
   };
 
   const handleSaveEmailConfig = (e: React.FormEvent) => {
@@ -844,6 +973,21 @@ export const AdminPanel: React.FC = () => {
             <span className="hidden sm:inline">Live Support</span>
             {supportThreads.some(t => t.unreadCount > 0) && (
               <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
+            )}
+          </button>
+
+          <button
+            onClick={() => setActiveTab('backup')}
+            className={`relative flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-semibold transition-all ${
+              activeTab === 'backup'
+                ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/30'
+                : 'text-neutral-400 hover:text-white'
+            }`}
+          >
+            <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-400" />
+            <span className="hidden sm:inline">Sheets Backup</span>
+            {isGoogleSheetsConfigured() && (
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
             )}
           </button>
         </div>
@@ -2292,6 +2436,361 @@ export const AdminPanel: React.FC = () => {
           </div>
         )}
 
+        {/* ===================== TAB 6: GOOGLE SHEETS SECONDARY BACKUP SYSTEM ===================== */}
+        {activeTab === 'backup' && (
+          <div className="space-y-8 animate-fadeIn">
+            {/* Header / Overview Banner */}
+            <div className="p-6 rounded-3xl bg-neutral-900/80 border border-neutral-800 shadow-xl relative overflow-hidden">
+              <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6">
+                <div className="flex items-start gap-4">
+                  <div className="p-3.5 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-400">
+                    <FileSpreadsheet className="w-7 h-7" />
+                  </div>
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2.5 flex-wrap">
+                      <h2 className="text-lg sm:text-xl font-bold text-white">Google Sheets Secondary Cloud Backup</h2>
+                      <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold border ${
+                        googleSheetsStatus?.connected || isGoogleSheetsConfigured()
+                          ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
+                          : 'bg-neutral-800 text-neutral-400 border-neutral-700'
+                      }`}>
+                        {googleSheetsStatus?.connected 
+                          ? 'Online & Connected' 
+                          : isGoogleSheetsConfigured() 
+                            ? 'Configured (Standby)' 
+                            : 'Setup Required'}
+                      </span>
+                    </div>
+                    <p className="text-xs sm:text-sm text-neutral-400 max-w-2xl">
+                      Automated secondary backend replication powered by Google Apps Script. Backs up user accounts, VIP subscription passcodes, system configurations, and live support tickets directly into your private Google Spreadsheet.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2.5 w-full lg:w-auto flex-wrap">
+                  <button
+                    type="button"
+                    onClick={() => setShowAppsScriptModal(true)}
+                    className="px-4 py-2.5 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-white text-xs font-semibold border border-neutral-700 flex items-center gap-2 transition-all cursor-pointer"
+                  >
+                    <Code2 className="w-4 h-4 text-emerald-400" />
+                    <span>View Apps Script Code</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handlePushToGoogleSheets}
+                    disabled={isPushingToSheets || !googleSheetsUrl.trim()}
+                    className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-2 shadow-lg shadow-emerald-600/20 transition-all cursor-pointer disabled:opacity-50"
+                  >
+                    <UploadCloud className={`w-4 h-4 ${isPushingToSheets ? 'animate-bounce' : ''}`} />
+                    <span>{isPushingToSheets ? 'Syncing to Sheets...' : 'Sync All to Sheets Now'}</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Status & Feedback alert */}
+              {sheetsPushMessage && (
+                <div className={`mt-5 p-3.5 rounded-2xl text-xs flex items-center gap-2.5 border ${
+                  sheetsPushMessage.success
+                    ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
+                    : 'bg-red-500/10 border-red-500/30 text-red-300'
+                }`}>
+                  {sheetsPushMessage.success ? <CheckCircle2 className="w-4 h-4 flex-shrink-0 text-emerald-400" /> : <AlertTriangle className="w-4 h-4 flex-shrink-0 text-red-400" />}
+                  <span className="flex-1">{sheetsPushMessage.message}</span>
+                  <button onClick={() => setSheetsPushMessage(null)} className="text-neutral-400 hover:text-white text-xs font-bold px-2 py-0.5">✕</button>
+                </div>
+              )}
+
+              {sheetsPullMessage && (
+                <div className={`mt-5 p-3.5 rounded-2xl text-xs flex items-center gap-2.5 border ${
+                  sheetsPullMessage.success
+                    ? 'bg-blue-500/10 border-blue-500/30 text-blue-300'
+                    : 'bg-red-500/10 border-red-500/30 text-red-300'
+                }`}>
+                  {sheetsPullMessage.success ? <CheckCircle2 className="w-4 h-4 flex-shrink-0 text-blue-400" /> : <AlertTriangle className="w-4 h-4 flex-shrink-0 text-red-400" />}
+                  <span className="flex-1">{sheetsPullMessage.message}</span>
+                  <button onClick={() => setSheetsPullMessage(null)} className="text-neutral-400 hover:text-white text-xs font-bold px-2 py-0.5">✕</button>
+                </div>
+              )}
+            </div>
+
+            {/* 2-Column Workspace Grid */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+              {/* Left 7 Cols: Google Apps Script Web App Configuration */}
+              <div className="lg:col-span-7 space-y-6">
+                <div className="p-6 rounded-3xl bg-neutral-900/80 border border-neutral-800 shadow-xl space-y-5">
+                  <div className="flex items-center justify-between pb-3 border-b border-neutral-800">
+                    <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                      <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
+                      <span>Google Apps Script Web App Setup</span>
+                    </h3>
+                    {googleSheetsStatus && (
+                      <span className={`text-[11px] font-semibold ${googleSheetsStatus.connected ? 'text-emerald-400' : 'text-red-400'}`}>
+                        {googleSheetsStatus.connected ? `Connected (${googleSheetsStatus.latency || 'ok'})` : 'Connection Failed'}
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-xs font-semibold text-neutral-300 mb-1.5">
+                        Google Apps Script Web App URL
+                      </label>
+                      <input
+                        type="url"
+                        placeholder="https://script.google.com/macros/s/AKfycbx.../exec"
+                        value={googleSheetsUrl}
+                        onChange={(e) => setGoogleSheetsUrlState(e.target.value)}
+                        className="w-full px-3.5 py-2.5 rounded-xl bg-neutral-950 border border-neutral-800 focus:border-emerald-500 text-xs text-white placeholder:text-neutral-600 focus:outline-none focus:ring-1 focus:ring-emerald-500 font-mono"
+                      />
+                      <p className="text-[11px] text-neutral-500 mt-1">
+                        Paste the deployed Web App URL from your Google Sheet (Deploy &gt; New deployment &gt; Web app).
+                      </p>
+                    </div>
+
+                    {/* Auto-Backup Toggle */}
+                    <div className="p-4 rounded-2xl bg-neutral-950/80 border border-neutral-800/80 flex items-center justify-between gap-4">
+                      <div>
+                        <div className="text-xs font-bold text-white flex items-center gap-2">
+                          <Zap className="w-3.5 h-3.5 text-amber-400" />
+                          <span>Real-Time Auto-Backup</span>
+                        </div>
+                        <p className="text-[11px] text-neutral-400 mt-0.5">
+                          Automatically mirror new user signups and VIP passcode redemptions to Google Sheets in real-time.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setGoogleSheetsAutoBackupState(!googleSheetsAutoBackup)}
+                        className={`p-1.5 rounded-xl border text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                          googleSheetsAutoBackup
+                            ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40'
+                            : 'bg-neutral-800 text-neutral-400 border-neutral-700'
+                        }`}
+                      >
+                        {googleSheetsAutoBackup ? (
+                          <>
+                            <ToggleRight className="w-5 h-5 text-emerald-400" />
+                            <span>Enabled</span>
+                          </>
+                        ) : (
+                          <>
+                            <ToggleLeft className="w-5 h-5 text-neutral-500" />
+                            <span>Disabled</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+
+                    {/* Action Buttons */}
+                    <div className="flex items-center gap-3 pt-2">
+                      <button
+                        type="button"
+                        onClick={handleSaveGoogleSheetsConfig}
+                        disabled={isSavingSheetsSettings}
+                        className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-2 shadow-md transition-all cursor-pointer disabled:opacity-50"
+                      >
+                        <Save className="w-3.5 h-3.5" />
+                        <span>{isSavingSheetsSettings ? 'Saving...' : 'Save Configuration'}</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleTestGoogleSheets()}
+                        disabled={isTestingGoogleSheets || !googleSheetsUrl.trim()}
+                        className="px-4 py-2.5 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-neutral-200 border border-neutral-700 text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer disabled:opacity-50"
+                      >
+                        <RefreshCw className={`w-3.5 h-3.5 text-emerald-400 ${isTestingGoogleSheets ? 'animate-spin' : ''}`} />
+                        <span>{isTestingGoogleSheets ? 'Testing Connection...' : 'Test Connection'}</span>
+                      </button>
+                    </div>
+
+                    {googleSheetsStatus && (
+                      <div className={`p-3 rounded-xl text-xs flex items-center gap-2 border ${
+                        googleSheetsStatus.connected
+                          ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
+                          : 'bg-red-500/10 border-red-500/30 text-red-300'
+                      }`}>
+                        {googleSheetsStatus.connected ? <CheckCircle2 className="w-4 h-4 flex-shrink-0 text-emerald-400" /> : <AlertTriangle className="w-4 h-4 flex-shrink-0 text-red-400" />}
+                        <div className="flex-1">
+                          <div className="font-semibold">{googleSheetsStatus.message}</div>
+                          {googleSheetsStatus.spreadsheetUrl && (
+                            <a
+                              href={googleSheetsStatus.spreadsheetUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-emerald-400 hover:underline flex items-center gap-1 mt-1 text-[11px]"
+                            >
+                              <span>Open Google Spreadsheet</span>
+                              <ExternalLink className="w-3 h-3" />
+                            </a>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* 30-Second Setup Guide */}
+                <div className="p-6 rounded-3xl bg-neutral-900/80 border border-neutral-800 shadow-xl space-y-4">
+                  <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                    <Sparkles className="w-4 h-4 text-amber-400" />
+                    <span>30-Second Google Sheets Setup Guide</span>
+                  </h3>
+
+                  <ol className="space-y-3 text-xs text-neutral-300">
+                    <li className="flex items-start gap-3">
+                      <span className="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center font-bold text-[10px] flex-shrink-0 mt-0.5">1</span>
+                      <div>
+                        <span>Open a new Google Sheet at </span>
+                        <a href="https://sheets.new" target="_blank" rel="noopener noreferrer" className="text-emerald-400 hover:underline font-semibold inline-flex items-center gap-1">
+                          <span>sheets.new</span>
+                          <ExternalLink className="w-3 h-3" />
+                        </a>
+                      </div>
+                    </li>
+
+                    <li className="flex items-start gap-3">
+                      <span className="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center font-bold text-[10px] flex-shrink-0 mt-0.5">2</span>
+                      <div>In the top menu, go to <strong className="text-white">Extensions &gt; Apps Script</strong>.</div>
+                    </li>
+
+                    <li className="flex items-start gap-3">
+                      <span className="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center font-bold text-[10px] flex-shrink-0 mt-0.5">3</span>
+                      <div>Click <button onClick={() => setShowAppsScriptModal(true)} className="text-emerald-400 hover:underline font-bold cursor-pointer">View Apps Script Code</button> below and paste it into the editor.</div>
+                    </li>
+
+                    <li className="flex items-start gap-3">
+                      <span className="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center font-bold text-[10px] flex-shrink-0 mt-0.5">4</span>
+                      <div>Click <strong className="text-white">Deploy &gt; New deployment</strong>, choose type <strong className="text-white">Web app</strong>, set Execute as <strong className="text-emerald-400">"Me"</strong> and Who has access to <strong className="text-emerald-400">"Anyone"</strong>.</div>
+                    </li>
+
+                    <li className="flex items-start gap-3">
+                      <span className="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center font-bold text-[10px] flex-shrink-0 mt-0.5">5</span>
+                      <div>Copy the generated Web App URL and paste it into the input above!</div>
+                    </li>
+                  </ol>
+                </div>
+              </div>
+
+              {/* Right 5 Cols: Disaster Recovery & Data Sync Tools */}
+              <div className="lg:col-span-5 space-y-6">
+                {/* Snapshot Stats Card */}
+                <div className="p-6 rounded-3xl bg-neutral-900/80 border border-neutral-800 shadow-xl space-y-4">
+                  <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                    <Database className="w-4 h-4 text-amber-400" />
+                    <span>Database Backup Payload</span>
+                  </h3>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="p-3.5 rounded-2xl bg-neutral-950 border border-neutral-800">
+                      <span className="text-[11px] text-neutral-400 uppercase tracking-wider font-bold">User Accounts</span>
+                      <div className="text-2xl font-black text-white mt-1">{users.length}</div>
+                      <span className="text-[10px] text-emerald-400 font-medium">Ready for Sheets</span>
+                    </div>
+
+                    <div className="p-3.5 rounded-2xl bg-neutral-950 border border-neutral-800">
+                      <span className="text-[11px] text-neutral-400 uppercase tracking-wider font-bold">VIP Passcodes</span>
+                      <div className="text-2xl font-black text-white mt-1">{subscriptionCodes.length}</div>
+                      <span className="text-[10px] text-purple-400 font-medium">Ready for Sheets</span>
+                    </div>
+
+                    <div className="p-3.5 rounded-2xl bg-neutral-950 border border-neutral-800">
+                      <span className="text-[11px] text-neutral-400 uppercase tracking-wider font-bold">Support Messages</span>
+                      <div className="text-2xl font-black text-white mt-1">{supportMessages.length}</div>
+                      <span className="text-[10px] text-blue-400 font-medium">Live Tickets</span>
+                    </div>
+
+                    <div className="p-3.5 rounded-2xl bg-neutral-950 border border-neutral-800">
+                      <span className="text-[11px] text-neutral-400 uppercase tracking-wider font-bold">Offline Queue</span>
+                      <div className="text-2xl font-black text-white mt-1">{pendingUsers.length}</div>
+                      <span className="text-[10px] text-amber-400 font-medium">Queued</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Instant Actions & Disaster Recovery Card */}
+                <div className="p-6 rounded-3xl bg-neutral-900/80 border border-neutral-800 shadow-xl space-y-4">
+                  <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                    <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                    <span>Disaster Recovery & Actions</span>
+                  </h3>
+
+                  <div className="space-y-2.5">
+                    {/* Push Snapshot */}
+                    <button
+                      type="button"
+                      onClick={handlePushToGoogleSheets}
+                      disabled={isPushingToSheets || !googleSheetsUrl.trim()}
+                      className="w-full p-3 rounded-2xl bg-emerald-600/15 hover:bg-emerald-600/25 border border-emerald-500/30 text-emerald-300 text-xs font-bold flex items-center justify-between transition-all cursor-pointer disabled:opacity-40"
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <UploadCloud className={`w-4 h-4 text-emerald-400 ${isPushingToSheets ? 'animate-bounce' : ''}`} />
+                        <div className="text-left">
+                          <div>Push Full Snapshot to Sheets</div>
+                          <div className="text-[10px] text-neutral-400 font-normal">Saves users, VIP passcodes & settings</div>
+                        </div>
+                      </div>
+                      <span className="text-xs">→</span>
+                    </button>
+
+                    {/* Pull & Restore from Sheets */}
+                    <button
+                      type="button"
+                      onClick={handlePullFromGoogleSheets}
+                      disabled={isPullingFromSheets || !googleSheetsUrl.trim()}
+                      className="w-full p-3 rounded-2xl bg-blue-600/15 hover:bg-blue-600/25 border border-blue-500/30 text-blue-300 text-xs font-bold flex items-center justify-between transition-all cursor-pointer disabled:opacity-40"
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <DownloadCloud className={`w-4 h-4 text-blue-400 ${isPullingFromSheets ? 'animate-spin' : ''}`} />
+                        <div className="text-left">
+                          <div>Restore Database from Sheets</div>
+                          <div className="text-[10px] text-neutral-400 font-normal">Replaces/merges missing users from spreadsheet</div>
+                        </div>
+                      </div>
+                      <span className="text-xs">→</span>
+                    </button>
+
+                    {/* Download JSON Backup */}
+                    <button
+                      type="button"
+                      onClick={handleDownloadUsersBackup}
+                      className="w-full p-3 rounded-2xl bg-neutral-950 hover:bg-neutral-800 border border-neutral-800 text-neutral-200 text-xs font-bold flex items-center justify-between transition-all cursor-pointer"
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <Download className="w-4 h-4 text-amber-400" />
+                        <div className="text-left">
+                          <div>Download JSON Snapshot</div>
+                          <div className="text-[10px] text-neutral-400 font-normal">Save offline .json file to local computer</div>
+                        </div>
+                      </div>
+                      <span className="text-xs">→</span>
+                    </button>
+
+                    {/* Restore Master VIP Codes */}
+                    <button
+                      type="button"
+                      onClick={handleRestoreMasterCodes}
+                      disabled={restoringCodes}
+                      className="w-full p-3 rounded-2xl bg-neutral-950 hover:bg-neutral-800 border border-neutral-800 text-neutral-200 text-xs font-bold flex items-center justify-between transition-all cursor-pointer"
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <Crown className="w-4 h-4 text-purple-400" />
+                        <div className="text-left">
+                          <div>Restore Master VIP Passcodes</div>
+                          <div className="text-[10px] text-neutral-400 font-normal">Restores default 1-mo, 1-yr & lifetime passcodes</div>
+                        </div>
+                      </div>
+                      <span className="text-xs">→</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
       </main>
 
       {/* Inspect User Modal */}
@@ -2702,6 +3201,76 @@ export const AdminPanel: React.FC = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Google Apps Script Code Viewer & Setup Modal */}
+      {showAppsScriptModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-neutral-950/85 backdrop-blur-md animate-fadeIn">
+          <div className="relative w-full max-w-3xl bg-neutral-900 border border-neutral-800 rounded-3xl shadow-2xl p-6 space-y-4 max-h-[88vh] flex flex-col">
+            <div className="flex items-center justify-between pb-3 border-b border-neutral-800 flex-shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-400">
+                  <Code2 className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white">Google Apps Script Source Code (`Code.gs`)</h3>
+                  <p className="text-xs text-neutral-400">Copy and paste this code into your Google Sheet's Apps Script editor.</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowAppsScriptModal(false)}
+                className="p-2 rounded-full bg-neutral-800 hover:bg-neutral-700 text-neutral-400 hover:text-white"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Quick action bar */}
+            <div className="flex items-center justify-between gap-3 bg-neutral-950 p-3 rounded-2xl border border-neutral-800 flex-shrink-0">
+              <div className="text-xs text-neutral-300">
+                <span className="text-emerald-400 font-bold">Ready to Deploy:</span> Paste into <span className="font-mono text-white">Code.gs</span> and deploy as Web App with "Anyone" access.
+              </div>
+
+              <button
+                type="button"
+                onClick={handleCopyAppsScript}
+                className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-2 shadow-md transition-all flex-shrink-0 cursor-pointer"
+              >
+                {copiedAppsScript ? (
+                  <>
+                    <CheckCheck className="w-4 h-4 text-white" />
+                    <span>Copied Code!</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-4 h-4" />
+                    <span>Copy Entire Script</span>
+                  </>
+                )}
+              </button>
+            </div>
+
+            {/* Code container */}
+            <div className="flex-1 overflow-y-auto bg-neutral-950 rounded-2xl border border-neutral-800/90 p-4 font-mono text-xs text-neutral-300 leading-relaxed select-all">
+              <pre className="whitespace-pre-wrap">{GOOGLE_APPS_SCRIPT_CODE}</pre>
+            </div>
+
+            <div className="flex items-center justify-between gap-3 pt-2 border-t border-neutral-800 flex-shrink-0">
+              <span className="text-[11px] text-neutral-400">
+                Code is also available in the repository root as <span className="font-mono text-emerald-400">GOOGLE_APPS_SCRIPT.js</span>
+              </span>
+
+              <button
+                type="button"
+                onClick={() => setShowAppsScriptModal(false)}
+                className="px-5 py-2 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-white text-xs font-semibold"
+              >
+                Close
+              </button>
+            </div>
           </div>
         </div>
       )}

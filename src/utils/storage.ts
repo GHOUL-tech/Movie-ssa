@@ -807,11 +807,17 @@ export function setPreferredServer(serverId: string): void {
 // System Settings (Subscription Required Toggle & Shop URL)
 // -------------------------------------------------------------
 
+const DEFAULT_GOOGLE_APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwROExizYYExM0ZfiyQvPKH2wRleazEc68zv_FUtQYHuP6bqUPImi5sD0WYokBdPat6/exec';
+
 export function getSystemSettings(): SystemSettings {
   try {
     const raw = localStorage.getItem(SYSTEM_SETTINGS_KEY);
     if (raw) {
-      return JSON.parse(raw);
+      const parsed = JSON.parse(raw);
+      if (!parsed.googleSheetsScriptUrl) {
+        parsed.googleSheetsScriptUrl = DEFAULT_GOOGLE_APPS_SCRIPT_URL;
+      }
+      return parsed;
     }
   } catch (e) {
     console.error('Failed to parse system settings:', e);
@@ -819,6 +825,8 @@ export function getSystemSettings(): SystemSettings {
   return {
     subscriptionRequired: false,
     shopUrl: DEFAULT_SHOP_URL,
+    googleSheetsScriptUrl: DEFAULT_GOOGLE_APPS_SCRIPT_URL,
+    googleSheetsAutoBackup: true,
     updatedAt: Date.now(),
   };
 }
