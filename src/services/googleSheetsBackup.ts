@@ -29,6 +29,7 @@ export interface GoogleSheetsRestoreData {
   users?: User[];
   subscriptionCodes?: SubscriptionCode[];
   settings?: Partial<SystemSettings>;
+  supportMessages?: SupportMessage[];
 }
 
 const DEFAULT_GOOGLE_APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzOcerndIfkHKkscjWKIZFU-wm6ea01fhTS_a7p7UrNXkhYA0Y0BRCgHEmo81d9UJ7h/exec';
@@ -852,15 +853,83 @@ function handleRequest(e, method) {
         }
       }
 
+      var restoredMessages = [];
+      var sSheetObj = ss.getSheetByName('Support_Tickets');
+      if (sSheetObj && sSheetObj.getLastRow() > 1) {
+        var sValues = sSheetObj.getRange(2, 1, sSheetObj.getLastRow() - 1, 8).getValues();
+        for (var m = 0; m < sValues.length; m++) {
+          var sRow = sValues[m];
+          if (sRow[0]) {
+            restoredMessages.push({
+              id: String(sRow[0]),
+              userId: String(sRow[1]),
+              userName: String(sRow[2]),
+              userEmail: String(sRow[3]),
+              sender: String(sRow[4]),
+              message: String(sRow[5]),
+              read: sRow[6] === 'Yes',
+              createdAt: sRow[7] ? new Date(sRow[7]).getTime() : new Date().getTime()
+            });
+          }
+        }
+      }
+
       output = {
         success: true,
         status: 'ok',
         data: {
           users: restoredUsers,
-          subscriptionCodes: restoredCodes
+          subscriptionCodes: restoredCodes,
+          supportMessages: restoredMessages
         },
         message: 'Backup data retrieved successfully'
       };
+    }
+    // 8. DELETIONS
+    else if (action === 'deleteUser' && params.userId) {
+      var dSheet = ss.getSheetByName('Users');
+      if (dSheet) {
+        var dLastRow = dSheet.getLastRow();
+        if (dLastRow > 1) {
+          var userIds = dSheet.getRange(2, 1, dLastRow - 1, 1).getValues();
+          for (var r = userIds.length - 1; r >= 0; r--) {
+            if (userIds[r][0] === params.userId) {
+              dSheet.deleteRow(r + 2);
+            }
+          }
+        }
+      }
+      output = { success: true, message: 'User deleted' };
+    }
+    else if (action === 'deleteSubscriptionCode' && params.codeId) {
+      var csSheet = ss.getSheetByName('Subscription_Codes');
+      if (csSheet) {
+        var csLastRow = csSheet.getLastRow();
+        if (csLastRow > 1) {
+          var codeIds = csSheet.getRange(2, 1, csLastRow - 1, 1).getValues();
+          for (var r = codeIds.length - 1; r >= 0; r--) {
+            if (codeIds[r][0] === params.codeId) {
+              csSheet.deleteRow(r + 2);
+            }
+          }
+        }
+      }
+      output = { success: true, message: 'Code deleted' };
+    }
+    else if (action === 'deleteSupportThread' && params.userId) {
+      var tsSheet = ss.getSheetByName('Support_Tickets');
+      if (tsSheet) {
+        var tsLastRow = tsSheet.getLastRow();
+        if (tsLastRow > 1) {
+          var tUserIds = tsSheet.getRange(2, 2, tsLastRow - 1, 1).getValues();
+          for (var r = tUserIds.length - 1; r >= 0; r--) {
+            if (tUserIds[r][0] === params.userId) {
+              tsSheet.deleteRow(r + 2);
+            }
+          }
+        }
+      }
+      output = { success: true, message: 'Thread deleted' };
     }
 
   } catch (err) {

@@ -67,6 +67,7 @@ import {
   sendSupportMessageToBackend, 
   subscribeToAllSupportMessages,
   subscribeToSubscriptionCodes,
+  subscribeToAllUsers,
   saveSubscriptionCodeToBackend,
   deleteSubscriptionCodeFromBackend,
   saveUserToBackend,
@@ -463,6 +464,10 @@ export const AdminPanel: React.FC = () => {
     loadUsers();
     getTrending('all', 'week').then(setTrendingMedia).catch(console.error);
 
+    const unsubscribeUsers = subscribeToAllUsers((newUsers) => {
+      setUsers(newUsers);
+    });
+
     // Subscribe to support messages
     const unsubscribeSupport = subscribeToAllSupportMessages((msgs) => {
       setSupportMessages(msgs);
@@ -488,6 +493,7 @@ export const AdminPanel: React.FC = () => {
     });
 
     return () => {
+      unsubscribeUsers();
       unsubscribeSupport();
       unsubscribeCodes();
     };
