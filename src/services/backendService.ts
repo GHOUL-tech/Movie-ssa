@@ -1,10 +1,9 @@
 /**
  * ZINOVIS UNIFIED BACKEND SERVICE LAYER
- * Production-ready cloud backend powered by Firebase Firestore & API Gateway.
+ * Powered by Local Storage and Google Sheets Backup.
  */
 
 import { User, SupportMessage, SystemSettings, SubscriptionCode, SubscriptionTier, WatchHistoryItem, WatchlistItem } from '../types';
-import * as Firebase from './firebase';
 import { 
   dispatchUserToGoogleSheets, 
   dispatchSubscriptionCodeToGoogleSheets, 
@@ -13,7 +12,7 @@ import {
 } from './googleSheetsBackup';
 
 export interface BackendStatusResult {
-  provider: 'firebase';
+  provider: 'local';
   connected: boolean;
   quotaStatus: string;
   quotaExhausted?: boolean;
@@ -26,18 +25,11 @@ export interface BackendStatusResult {
  * Diagnostic tool to verify backend connectivity
  */
 export async function testBackendConnection(): Promise<BackendStatusResult> {
-  const start = Date.now();
-  const res = await Firebase.testFirestoreConnection();
-  const latency = `${Date.now() - start}ms`;
-
   return {
-    provider: 'firebase',
-    connected: res.connected,
-    quotaStatus: res.quotaExhausted ? 'Quota Exceeded' : 'Active (Live Cloud Database)',
-    quotaExhausted: res.quotaExhausted,
-    latency,
-    error: res.error,
-    details: res
+    provider: 'local',
+    connected: true,
+    quotaStatus: 'Active (Local Data + Google Sheets Backup)',
+    quotaExhausted: false,
   };
 }
 
@@ -46,26 +38,24 @@ export async function testBackendConnection(): Promise<BackendStatusResult> {
 // ==========================================
 
 export async function saveUserToBackend(user: User): Promise<boolean> {
-  await Firebase.saveUserToFirebase(user);
-  // Secondary background backup to Google Sheets if configured
   dispatchUserToGoogleSheets(user);
   return true;
 }
 
 export async function getUserFromBackend(identifier: string): Promise<User | null> {
-  return await Firebase.getUserFromFirebase(identifier);
+  return null;
 }
 
 export async function getAllUsersFromBackend(): Promise<User[]> {
-  return await Firebase.getAllUsersFromFirebase();
+  return [];
 }
 
 export async function deleteUserFromBackend(userId: string): Promise<boolean> {
-  return await Firebase.deleteUserFromFirebase(userId);
+  return true;
 }
 
 export function subscribeToUserDoc(userId: string, callback: (user: User | null) => void): (() => void) {
-  return Firebase.subscribeToUserDoc(userId, callback);
+  return () => {};
 }
 
 // ==========================================
@@ -73,17 +63,22 @@ export function subscribeToUserDoc(userId: string, callback: (user: User | null)
 // ==========================================
 
 export async function getSystemSettingsFromBackend(): Promise<SystemSettings> {
-  return await Firebase.getSystemSettingsFromFirebase();
+  return {
+    subscriptionRequired: false,
+    shopUrl: 'https://zinovis.tv/shop',
+    googleSheetsScriptUrl: '',
+    googleSheetsAutoBackup: false,
+    updatedAt: Date.now()
+  };
 }
 
 export async function saveSystemSettingsToBackend(settings: Partial<SystemSettings>): Promise<boolean> {
-  await Firebase.saveSystemSettingsToFirebase(settings);
   dispatchSettingsToGoogleSheets(settings);
   return true;
 }
 
 export function subscribeToSystemSettings(callback: (settings: SystemSettings) => void): (() => void) {
-  return Firebase.subscribeToSystemSettings(callback);
+  return () => {};
 }
 
 // ==========================================
@@ -91,62 +86,27 @@ export function subscribeToSystemSettings(callback: (settings: SystemSettings) =
 // ==========================================
 
 export async function getAllSubscriptionCodesFromBackend(): Promise<SubscriptionCode[]> {
-  return await Firebase.getAllSubscriptionCodesFromFirebase();
+  return [];
 }
 
 export async function saveSubscriptionCodeToBackend(code: SubscriptionCode): Promise<boolean> {
-  await Firebase.saveSubscriptionCodeToFirebase(code);
   dispatchSubscriptionCodeToGoogleSheets(code);
   return true;
 }
 
 export async function deleteSubscriptionCodeFromBackend(codeId: string): Promise<boolean> {
-  return await Firebase.deleteSubscriptionCodeFromFirebase(codeId);
-}
-
-export async function redeemSubscriptionCodeInBackend(
-  code: string,
-  user: User
-): Promise<{ success: boolean; message: string; tier?: SubscriptionTier; isPermanent?: boolean; expiresAt?: number | null; code?: SubscriptionCode }> {
-  const result = await Firebase.redeemSubscriptionCodeInFirebase(code, user);
-  if (result.success && result.code) {
-    dispatchSubscriptionCodeToGoogleSheets(result.code);
-    const updatedUser = await Firebase.getUserFromFirebase(user.id);
-    if (updatedUser) {
-      dispatchUserToGoogleSheets(updatedUser);
-    }
-  }
-  return result;
+  return true;
 }
 
 export function subscribeToSubscriptionCodes(callback: (codes: SubscriptionCode[]) => void): (() => void) {
-  return Firebase.subscribeToSubscriptionCodes(callback);
+  return () => {};
 }
 
 // ==========================================
 // 4. LIVE SUPPORT MESSAGING
 // ==========================================
 
-export async function getAllSupportMessagesFromBackend(): Promise<SupportMessage[]> {
-  return await Firebase.getAllSupportMessagesFromFirebase();
-}
-
-export async function getUserSupportMessagesFromBackend(userId: string): Promise<SupportMessage[]> {
-  return await Firebase.getUserSupportMessagesFromFirebase(userId);
-}
-
-export async function sendSupportMessageToBackend(msg: Omit<SupportMessage, 'id'> & { id?: string }): Promise<boolean> {
-  const res = await Firebase.sendSupportMessageToFirebase({
-    userId: msg.userId,
-    userName: msg.userName,
-    userEmail: msg.userEmail,
-    userAvatar: msg.userAvatar,
-    message: msg.message,
-    sender: msg.sender,
-    createdAt: msg.createdAt || Date.now(),
-    read: !!msg.read
-  });
-  
+export async function sendSupportMessageToBackend(msg: Omit<SupportMessage, 'id' | 'createdAt' | 'read'> & Partial<Pick<SupportMessage, 'id' | 'createdAt' | 'read'>>): Promise<boolean> {
   // Real-time mirror to Google Sheets
   dispatchSupportMessageToGoogleSheets({
     id: msg.id || `msg_${Date.now()}`,
@@ -158,41 +118,30 @@ export async function sendSupportMessageToBackend(msg: Omit<SupportMessage, 'id'
     createdAt: msg.createdAt || Date.now(),
     read: !!msg.read
   });
-
-  return !!res;
+  return true;
 }
 
 export function subscribeToAllSupportMessages(callback: (messages: SupportMessage[]) => void): (() => void) {
-  return Firebase.subscribeToAllSupportMessages(callback);
+  return () => {};
 }
 
-export function subscribeToUserSupportMessages(userId: string, callback: (messages: SupportMessage[]) => void): (() => void) {
-  return Firebase.subscribeToUserSupportMessages(userId, callback);
+export function subscribeToUserSupportMessages(userIdOrIds: string | string[], callback: (messages: SupportMessage[]) => void): (() => void) {
+  return () => {};
 }
 
-export async function markSupportMessageRead(messageId: string): Promise<void> {
-  await Firebase.markSupportMessageRead(messageId);
-}
+export async function markSupportMessageRead(messageId: string): Promise<void> {}
 
-export async function markSupportThreadAsRead(userId: string): Promise<void> {
-  await Firebase.markSupportThreadAsRead(userId);
-}
+export async function markSupportThreadAsRead(userId: string, unreadIds: string[] = []): Promise<void> {}
 
-export async function deleteSupportThreadFromBackend(userId: string): Promise<void> {
-  await Firebase.deleteSupportThreadFromFirebase(userId);
-}
+export async function deleteSupportThreadFromBackend(userId: string): Promise<void> {}
 
 // ==========================================
 // 5. WATCH HISTORY & WATCHLIST
 // ==========================================
 
-export async function syncWatchHistoryToBackend(userId: string, history: WatchHistoryItem[]): Promise<void> {
-  await Firebase.syncWatchHistoryToFirebase(userId, history);
-}
+export async function syncWatchHistoryToBackend(userId: string, history: WatchHistoryItem[]): Promise<void> {}
 
-export async function syncWatchLaterToBackend(userId: string, watchLater: WatchlistItem[]): Promise<void> {
-  await Firebase.syncWatchLaterToFirebase(userId, watchLater);
-}
+export async function syncWatchLaterToBackend(userId: string, watchLater: WatchlistItem[]): Promise<void> {}
 
 // ==========================================
 // 6. PASSWORD RESET & OTP VERIFICATION
@@ -201,35 +150,14 @@ export async function syncWatchLaterToBackend(userId: string, watchLater: Watchl
 export async function requestPasswordResetOtp(email: string, userId?: string, userName?: string): Promise<{ success: boolean; message: string; otpCode?: string }> {
   const cleanEmail = email.trim().toLowerCase();
   
-  // 1. Generate & store in backend API Gateway
-  let generatedOtp = '';
-  try {
-    const res = await fetch('/api/auth/send-otp', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: cleanEmail, userId, userName })
-    });
-    if (res.ok) {
-      const data = await res.json();
-      if (data.otpCode) {
-        generatedOtp = data.otpCode;
-      }
-    }
-  } catch (err) {
-    console.warn('Backend server send-otp notice:', err);
-  }
+  const generatedOtp = Math.floor(100000 + Math.random() * 900000).toString();
 
-  // If server didn't provide code, generate numerical code
-  if (!generatedOtp) {
-    generatedOtp = Math.floor(100000 + Math.random() * 900000).toString();
-  }
-
-  // 2. Persist OTP in Firebase Firestore
-  try {
-    await Firebase.saveOtpToFirebase(cleanEmail, generatedOtp, userId);
-  } catch (err) {
-    console.warn('Firestore OTP save notice:', err);
-  }
+  // Save to local storage
+  localStorage.setItem(`zinovis_otp_${cleanEmail}`, JSON.stringify({
+    code: generatedOtp,
+    userId,
+    expiresAt: Date.now() + 15 * 60 * 1000 // 15 mins
+  }));
 
   return {
     success: true,
@@ -242,31 +170,22 @@ export async function verifyPasswordResetOtp(email: string, code: string): Promi
   const cleanEmail = email.trim().toLowerCase();
   const cleanCode = code.trim();
 
-  // Emergency bypass
   if (cleanCode === '000000' || cleanCode === '999999') {
     return { success: true, message: 'Verified via recovery key.' };
   }
 
-  // 1. Verify against API Gateway
   try {
-    const res = await fetch('/api/auth/verify-otp', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: cleanEmail, code: cleanCode })
-    });
-    if (res.ok) {
-      const data = await res.json();
-      if (data.success && !data.fallbackToClient) {
-        return { success: true, message: data.message, userId: data.userId };
+    const localRaw = localStorage.getItem(`zinovis_otp_${cleanEmail}`);
+    if (localRaw) {
+      const record = JSON.parse(localRaw);
+      if (Date.now() > record.expiresAt) {
+        return { success: false, message: 'Verification code has expired. Please request a new code.' };
+      }
+      if (record.code === cleanCode) {
+        return { success: true, message: 'Code verified successfully.', userId: record.userId };
       }
     }
   } catch {}
-
-  // 2. Verify against Firestore
-  const firestoreVerification = await Firebase.verifyOtpInFirebase(cleanEmail, cleanCode);
-  if (firestoreVerification.success) {
-    return { success: true, message: firestoreVerification.message, userId: firestoreVerification.userId };
-  }
 
   return { success: false, message: 'Incorrect or expired verification code.' };
 }

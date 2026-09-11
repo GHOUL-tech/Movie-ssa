@@ -70,14 +70,16 @@ export const LiveSupportModal: React.FC<LiveSupportModalProps> = ({ isOpen, onCl
   const inputRef = useRef<HTMLInputElement>(null);
   const previousMessageCountRef = useRef<number>(0);
 
-  // Derive active userId
-  const effectiveUserId = currentUser?.id || getPersistentGuestId();
+  // Derive active userId & guest tracking ID
+  const guestId = getPersistentGuestId();
+  const effectiveUserId = currentUser?.id || guestId;
+  const targetIds = currentUser?.id ? [currentUser.id, guestId] : [guestId];
 
   // Subscribe to real-time support messages from Firestore
   useEffect(() => {
     if (!isOpen) return;
 
-    const unsubscribe = subscribeToUserSupportMessages(effectiveUserId, (incomingMsgs) => {
+    const unsubscribe = subscribeToUserSupportMessages(targetIds, (incomingMsgs) => {
       if (incomingMsgs) {
         setMessages((prev) => {
           // Check if a new message from admin arrived
@@ -96,7 +98,7 @@ export const LiveSupportModal: React.FC<LiveSupportModalProps> = ({ isOpen, onCl
     });
 
     return () => unsubscribe();
-  }, [isOpen, effectiveUserId]);
+  }, [isOpen, currentUser?.id, guestId]);
 
   // Auto-scroll to bottom on messages update
   useEffect(() => {

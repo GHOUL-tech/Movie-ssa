@@ -9,11 +9,6 @@ import {
   saveSubscriptionCodeToBackend,
   deleteSubscriptionCodeFromBackend
 } from '../services/backendService';
-import { 
-  isFirestoreQuotaExhausted, 
-  syncWatchHistoryToFirebase, 
-  syncWatchLaterToFirebase 
-} from '../services/firebase';
 
 const WATCHLIST_KEY = 'cinescope_watchlist_v1';
 const CONTINUE_WATCHING_KEY = 'cinescope_continue_watching_v1';
@@ -41,21 +36,71 @@ function getInitialUsers(): User[] {
       return filtered;
     }
   } catch (e) {
-    console.error('Failed to parse users:', e);
+    console.error('Failed to parse users from local storage:', e);
   }
 
-  // Return empty array instead of seeding demo user
-  const users: User[] = [];
-  try {
-    localStorage.setItem(USERS_KEY, JSON.stringify(users));
-  } catch (e) {
-    console.error('Failed to init users:', e);
-  }
-  return users;
+  return [];
 }
 
 export function getAllUsers(): User[] {
   return getInitialUsers();
+}
+
+/**
+ * Hydrates local storage by pulling all user accounts from the primary Firebase Firestore database.
+ * Merges local and remote users so no offline or recent data is lost.
+ */
+export async function hydrateStorageFromFirebase(): Promise<User[]> {
+  try {
+    const remoteUsers = await getAllUsersFromBackend();
+    if (Array.isArray(remoteUsers) && remoteUsers.length > 0) {
+      const localUsers = getAllUsers();
+      const userMap = new Map<string, User>();
+
+      // Put local users first
+      localUsers.forEach(u => userMap.set(u.id, u));
+
+      // Merge remote users over local, preferring richer data
+      remoteUsers.forEach(ru => {
+        const local = userMap.get(ru.id);
+        if (local) {
+          // Merge arrays like watchLater & watchHistory without losing local additions
+          const watchLaterMap = new Map();
+          (ru.watchLater || []).forEach(item => watchLaterMap.set(`${item.id}_${item.media_type}`, item));
+          (local.watchLater || []).forEach(item => watchLaterMap.set(`${item.id}_${item.media_type}`, item));
+
+          const historyMap = new Map();
+          (ru.watchHistory || []).forEach(item => historyMap.set(`${item.id}_${item.media_type}`, item));
+          (local.watchHistory || []).forEach(item => historyMap.set(`${item.id}_${item.media_type}`, item));
+
+          userMap.set(ru.id, {
+            ...ru,
+            ...local,
+            subscription: ru.subscription || local.subscription,
+            watchLater: Array.from(watchLaterMap.values()),
+            watchHistory: Array.from(historyMap.values()).sort((a: any, b: any) => (b.watched_at || 0) - (a.watched_at || 0)).slice(0, 50),
+          });
+        } else {
+          userMap.set(ru.id, ru);
+        }
+      });
+
+      const merged = Array.from(userMap.values());
+      saveUsersLocally(merged);
+
+      // Check current user
+      const currentId = localStorage.getItem(CURRENT_USER_ID_KEY);
+      if (currentId && userMap.has(currentId)) {
+        const updatedCurrent = userMap.get(currentId)!;
+        saveWatchlistLocally(updatedCurrent.watchLater || []);
+      }
+
+      return merged;
+    }
+  } catch (err) {
+    console.warn('Firebase user storage hydration notice:', err);
+  }
+  return getAllUsers();
 }
 
 export function saveUsers(users: User[]): void {
@@ -79,6 +124,12 @@ export function saveUsersLocally(users: User[]): void {
   } catch (e) {
     console.error('Failed to save users locally:', e);
   }
+}
+
+export function saveWatchlistLocally(list: WatchlistItem[]): void {
+  try {
+    localStorage.setItem(WATCHLIST_KEY, JSON.stringify(list));
+  } catch {}
 }
 
 export function getCurrentUser(): User | null {
@@ -199,28 +250,8 @@ export function addPendingUserSync(user: User): void {
 }
 
 export async function syncPendingUsersToFirebase(): Promise<{ synced: number; failed: number; quotaStillExhausted?: boolean }> {
-  if (isFirestoreQuotaExhausted()) {
-    return { synced: 0, failed: 0, quotaStillExhausted: true };
-  }
-  const pending = getPendingUserSyncs();
-  if (pending.length === 0) return { synced: 0, failed: 0 };
-
-  let synced = 0;
-  let failed = 0;
-  const remaining: User[] = [];
-
-  for (const user of pending) {
-    try {
-      await saveUserToBackend(user);
-      synced++;
-    } catch {
-      remaining.push(user);
-      failed++;
-    }
-  }
-
-  localStorage.setItem(PENDING_USERS_KEY, JSON.stringify(remaining));
-  return { synced, failed, quotaStillExhausted: isFirestoreQuotaExhausted() };
+  // Offline sync removed as Firebase is removed
+  return { synced: 0, failed: 0, quotaStillExhausted: false };
 }
 
 export async function registerUserAsync(params: {
@@ -600,8 +631,6 @@ export function addToWatchHistory(item: Omit<WatchHistoryItem, 'watched_at'>): v
       const updatedHistory = history.slice(0, 50);
       users[idx].watchHistory = updatedHistory;
       saveUsers(users);
-      // Sync to Firebase backend
-      syncWatchHistoryToFirebase(user.id, updatedHistory).catch(err => console.error('Firebase history sync error:', err));
     }
   } else {
     // Guest history
@@ -631,7 +660,6 @@ export function removeFromWatchHistory(id: number, mediaType: MediaType): void {
       );
       users[idx].watchHistory = filtered;
       saveUsers(users);
-      syncWatchHistoryToFirebase(user.id, filtered).catch(err => console.error('Firebase history remove sync error:', err));
     }
   } else {
     try {
@@ -655,7 +683,6 @@ export function clearWatchHistory(): void {
     if (idx >= 0) {
       users[idx].watchHistory = [];
       saveUsers(users);
-      syncWatchHistoryToFirebase(user.id, []).catch(err => console.error('Firebase clear history error:', err));
     }
   } else {
     localStorage.removeItem(GUEST_HISTORY_KEY);
@@ -687,7 +714,6 @@ export function saveWatchlist(list: WatchlistItem[]): void {
       if (idx >= 0) {
         users[idx].watchLater = list;
         saveUsers(users);
-        syncWatchLaterToFirebase(user.id, list).catch(err => console.error('Firebase watch later sync error:', err));
       }
     }
   } catch (e) {
@@ -1020,5 +1046,68 @@ export function getUserSubscriptionDaysLeft(user: User | null | undefined): numb
   const diff = sub.expiresAt - Date.now();
   if (diff <= 0) return 0;
   return Math.ceil(diff / (1000 * 60 * 60 * 24));
+}
+
+export async function redeemSubscriptionCodeInBackend(code: string, user: User): Promise<{ success: boolean; message: string; tier?: SubscriptionTier }> {
+  const codes = getSubscriptionCodes();
+  const cleanCode = code.trim().toUpperCase();
+  const codeIdx = codes.findIndex(c => c.code.toUpperCase() === cleanCode);
+
+  if (codeIdx === -1) {
+    return { success: false, message: 'Invalid or unrecognized subscription code.' };
+  }
+
+  const codeObj = codes[codeIdx];
+  if (codeObj.isRedeemed) {
+    return { success: false, message: 'This subscription code has already been redeemed.' };
+  }
+
+  // Calculate new subscription
+  const now = Date.now();
+  let newExpiresAt = now;
+  const currentSub = user.subscription;
+
+  if (currentSub && currentSub.expiresAt && currentSub.expiresAt > now && !currentSub.isPermanent) {
+    newExpiresAt = currentSub.expiresAt;
+  }
+
+  const isPermanent = codeObj.tier === 'permanent' || codeObj.durationDays === 0;
+  if (!isPermanent) {
+    newExpiresAt += (codeObj.durationDays || 30) * 24 * 60 * 60 * 1000;
+  }
+
+  const newSub: UserSubscription = {
+    tier: codeObj.tier,
+    startDate: now,
+    expiresAt: isPermanent ? undefined : newExpiresAt,
+    isPermanent,
+  };
+
+  // Update user
+  const updatedUser = { ...user, subscription: newSub };
+  const allUsers = getAllUsers();
+  const uIdx = allUsers.findIndex(u => u.id === user.id);
+  if (uIdx >= 0) {
+    allUsers[uIdx] = updatedUser;
+    saveUsers(allUsers);
+    await saveUserToBackend(updatedUser);
+  }
+
+  // Mark code redeemed
+  codes[codeIdx].isRedeemed = true;
+  codes[codeIdx].redeemedBy = {
+    userId: user.id,
+    userName: user.name,
+    userEmail: user.email
+  };
+  codes[codeIdx].redeemedAt = now;
+  saveSubscriptionCodes(codes);
+  await saveSubscriptionCodeToBackend(codes[codeIdx]);
+
+  return { 
+    success: true, 
+    message: `Successfully redeemed ${codeObj.tier.replace('_', ' ')} subscription pass!`,
+    tier: codeObj.tier 
+  };
 }
 

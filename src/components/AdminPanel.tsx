@@ -76,11 +76,6 @@ import {
   deleteSupportThreadFromBackend
 } from '../services/backendService';
 import { 
-  isFirestoreQuotaExhausted,
-  onQuotaStatusChange,
-  testFirestoreConnection
-} from '../services/firebase';
-import { 
   getGoogleSheetsScriptUrl, 
   setGoogleSheetsScriptUrl, 
   isGoogleSheetsAutoBackupEnabled, 
@@ -171,7 +166,7 @@ export const AdminPanel: React.FC = () => {
   const [showInspectPass, setShowInspectPass] = useState(false);
 
   // Firebase Quota & Offline Sync Diagnostics
-  const [quotaExhausted, setQuotaExhausted] = useState(isFirestoreQuotaExhausted());
+  const [quotaExhausted, setQuotaExhausted] = useState(false);
   const [testingConnection, setTestingConnection] = useState(false);
   const [connectionTestResult, setConnectionTestResult] = useState<{ success: boolean; message: string } | null>(null);
   const [isSyncingPending, setIsSyncingPending] = useState(false);
@@ -201,11 +196,7 @@ export const AdminPanel: React.FC = () => {
   const [testEmailResult, setTestEmailResult] = useState<{ success: boolean; message: string } | null>(null);
 
   useEffect(() => {
-    const unsubQuota = onQuotaStatusChange((status) => {
-      setQuotaExhausted(status);
-      setPendingUsers(getPendingUserSyncs());
-    });
-    return () => unsubQuota();
+    setPendingUsers(getPendingUserSyncs());
   }, []);
 
   // If not admin, redirect to home
@@ -829,9 +820,10 @@ export const AdminPanel: React.FC = () => {
     }> = {};
 
     supportMessages.forEach(msg => {
-      if (!threads[msg.userId]) {
-        threads[msg.userId] = {
-          userId: msg.userId,
+      const uId = msg.userId || 'unknown_user';
+      if (!threads[uId]) {
+        threads[uId] = {
+          userId: uId,
           userName: msg.userName || 'User',
           userEmail: msg.userEmail || '',
           userAvatar: msg.userAvatar,
@@ -840,10 +832,10 @@ export const AdminPanel: React.FC = () => {
           unreadCount: 0,
         };
       }
-      threads[msg.userId].messages.push(msg);
-      threads[msg.userId].lastMessage = msg;
+      threads[uId].messages.push(msg);
+      threads[uId].lastMessage = msg;
       if (msg.sender === 'user' && !msg.read) {
-        threads[msg.userId].unreadCount += 1;
+        threads[uId].unreadCount += 1;
       }
     });
 
@@ -865,7 +857,10 @@ export const AdminPanel: React.FC = () => {
   // Auto scroll and mark read when active chat messages change
   useEffect(() => {
     if (selectedUserForChat) {
-      markSupportThreadAsRead(selectedUserForChat).catch(() => {});
+      const unreadIds = activeChatMessages.filter(m => !m.read && m.sender === 'user').map(m => m.id);
+      if (unreadIds.length > 0) {
+        markSupportThreadAsRead(selectedUserForChat, unreadIds).catch(() => {});
+      }
       adminMessagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }
   }, [selectedUserForChat, activeChatMessages]);

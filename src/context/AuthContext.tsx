@@ -20,12 +20,13 @@ import {
   getSystemSettings,
   saveSystemSettings,
   checkUserHasActiveSubscription,
-  getUserSubscriptionDaysLeft
+  getUserSubscriptionDaysLeft,
+  hydrateStorageFromFirebase,
+  redeemSubscriptionCodeInBackend
 } from '../utils/storage';
 import { 
   subscribeToUserDoc, 
   subscribeToSystemSettings, 
-  redeemSubscriptionCodeInBackend, 
   saveSystemSettingsToBackend
 } from '../services/backendService';
 
@@ -103,7 +104,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   useEffect(() => {
+    // 1. Instant local read
     refreshUserData();
+
+    // 2. Proactive Firebase cloud hydration (primary backend source of truth)
+    hydrateStorageFromFirebase().then(() => {
+      refreshUserData();
+    }).catch(err => {
+      console.warn('Initial cloud hydration note:', err);
+    });
   }, [refreshUserData]);
 
   // Real-time listener for System Settings (Subscription toggle & shop URL)

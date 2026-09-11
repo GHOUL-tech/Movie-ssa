@@ -1,5 +1,4 @@
 import emailjs from '@emailjs/browser';
-import { saveOtpToFirebase } from './firebase';
 
 export interface EmailJsConfig {
   serviceId: string;
@@ -160,10 +159,16 @@ export async function sendOtpViaEmail(params: SendOtpParams): Promise<SendOtpRes
   const { to_email, to_name, otp_code, userId } = params;
   const cleanEmail = to_email.trim().toLowerCase();
 
-  // 1. Always safeguard in Firebase Firestore `otp_verifications` collection
-  saveOtpToFirebase(cleanEmail, otp_code, userId).catch(err => {
-    console.warn('Firebase OTP save warning:', err);
-  });
+  // 1. Always safeguard in localStorage
+  try {
+    localStorage.setItem(`zinovis_otp_${cleanEmail}`, JSON.stringify({
+      code: otp_code,
+      userId,
+      expiresAt: Date.now() + 15 * 60 * 1000
+    }));
+  } catch (err) {
+    console.warn('Local storage OTP save warning:', err);
+  }
 
   // 2. Also register in Backend Express Server if available
   try {

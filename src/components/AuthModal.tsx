@@ -33,7 +33,7 @@ import { useAuth } from '../context/AuthContext';
 import { AVATAR_PRESETS, ANIME_AVATARS, getInitialAvatar } from '../utils/avatars';
 import { COUNTRIES } from '../utils/countries';
 import { sendOtpViaEmail, EMAILJS_DRAFT_TEMPLATE } from '../services/emailService';
-import { isFirestoreQuotaExhausted, verifyOtpInFirebase } from '../services/firebase';
+import { requestPasswordResetOtp, verifyPasswordResetOtp } from '../services/backendService';
 
 export const AuthModal: React.FC = () => {
   const { 
@@ -218,9 +218,9 @@ export const AuthModal: React.FC = () => {
         return;
       }
 
-      // 2. Check Firebase Firestore OTP collection
+      // 2. Check Backend OTP store
       const targetEmail = targetResetUser?.email || forgotEmail.trim();
-      const fbResult = await verifyOtpInFirebase(targetEmail, cleanInput);
+      const fbResult = await verifyPasswordResetOtp(targetEmail, cleanInput);
       if (fbResult.success) {
         setForgotStep('new_password');
         setError(null);
@@ -429,7 +429,7 @@ ${EMAILJS_DRAFT_TEMPLATE.plainText}
         </div>
 
         {/* Offline Sync Mode Notice (Displayed when Firestore daily free quota is exhausted) */}
-        {isFirestoreQuotaExhausted() && (
+        {false && (
           <div className="mb-5 p-2.5 rounded-xl bg-neutral-900/90 border border-amber-500/30 text-neutral-300 text-[11px] font-medium flex flex-col items-center justify-center gap-1 text-center">
             <div className="flex items-center gap-2 text-amber-300">
               <div className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
