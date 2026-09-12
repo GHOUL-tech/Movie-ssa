@@ -120,7 +120,7 @@ function handleRequest(e, method) {
       output = { success: true, users: users, count: users.length };
     }
 
-    // 4. UPSERT USER (INSERT OR UPDATE FULL PROFILE)
+    // 4. UPSERT USER (INSERT OR UPDATE FULL PROFILE WITH PASSWORD)
     else if (action === 'upsertUser' && params.user) {
       var u = params.user;
       var uSheet = getOrCreateUsersSheet(ss);
@@ -132,11 +132,12 @@ function handleRequest(e, method) {
       var cleanUsername = String(u.username || '').trim().toLowerCase();
 
       if (lastRow > 1) {
-        var existingData = uSheet.getRange(2, 1, lastRow - 1, 4).getValues();
+        var existingData = uSheet.getRange(2, 1, lastRow - 1, Math.min(uSheet.getLastColumn(), 5)).getValues();
+        var hMap = createHeaderMap(uSheet);
         for (var i = 0; i < existingData.length; i++) {
-          var eId = String(existingData[i][0] || '').trim().toLowerCase();
-          var eUsername = String(existingData[i][1] || '').trim().toLowerCase();
-          var eEmail = String(existingData[i][3] || '').trim().toLowerCase();
+          var eId = String(getColVal(existingData[i], hMap, ['userid', 'id'], 0) || '').trim().toLowerCase();
+          var eUsername = String(getColVal(existingData[i], hMap, ['username', 'user'], 1) || '').trim().toLowerCase();
+          var eEmail = String(getColVal(existingData[i], hMap, ['email', 'mail'], 3) || '').trim().toLowerCase();
 
           if ((cleanId && eId === cleanId) || (cleanEmail && eEmail === cleanEmail) || (cleanUsername && eUsername === cleanUsername)) {
             targetRow = i + 2;
@@ -145,55 +146,7 @@ function handleRequest(e, method) {
         }
       }
 
-      // Serialize watch history & watchlist safely
-      var watchHistoryJson = '';
-      if (u.watchHistory && Array.isArray(u.watchHistory)) {
-        try { watchHistoryJson = JSON.stringify(u.watchHistory); } catch (e) {}
-      } else if (typeof u.watchHistory === 'string') {
-        watchHistoryJson = u.watchHistory;
-      }
-
-      var watchLaterJson = '';
-      if (u.watchLater && Array.isArray(u.watchLater)) {
-        try { watchLaterJson = JSON.stringify(u.watchLater); } catch (e) {}
-      } else if (typeof u.watchLater === 'string') {
-        watchLaterJson = u.watchLater;
-      }
-
-      var subTier = 'Free Tier';
-      var subExpires = 'None';
-      var isPerm = 'No';
-
-      if (u.subscription) {
-        subTier = u.subscription.tier || 'Free Tier';
-        if (u.subscription.isPermanent || subTier === 'permanent') {
-          subExpires = 'Permanent VIP';
-          isPerm = 'Yes';
-        } else if (u.subscription.expiresAt) {
-          subExpires = new Date(u.subscription.expiresAt).toISOString();
-        }
-      }
-
-      var joinedStr = u.joinedAt ? new Date(u.joinedAt).toISOString() : new Date().toISOString();
-
-      var userRowData = [
-        String(u.id || ('u_' + Date.now())),
-        String(u.username || ''),
-        String(u.name || ''),
-        String(u.email || ''),
-        String(u.password || ''),
-        String(u.avatar || ''),
-        String(u.country || 'Global'),
-        u.age !== undefined && u.age !== null ? u.age : '',
-        u.isUnder18 ? 'Yes' : 'No',
-        joinedStr,
-        subTier,
-        subExpires,
-        isPerm,
-        watchHistoryJson,
-        watchLaterJson,
-        new Date().toISOString()
-      ];
+      var userRowData = formatUserRowForSheet(u, uSheet);
 
       if (targetRow > 1) {
         uSheet.getRange(targetRow, 1, 1, userRowData.length).setValues([userRowData]);
@@ -202,7 +155,7 @@ function handleRequest(e, method) {
       }
 
       logActivity(ss, 'User Upsert', 'User: ' + (u.name || u.username || u.id));
-      output = { success: true, message: 'User synchronized to Google Sheets Cloud Database' };
+      output = { success: true, message: 'User synchronized to Google Sheets Cloud Database (including Password)' };
     }
 
     // 5. DELETE USER
@@ -567,52 +520,7 @@ function handleRequest(e, method) {
         clearSheetPreserveHeaders(uSheet);
 
         var userRows = data.users.map(function(u) {
-          var wHistory = '';
-          if (u.watchHistory && Array.isArray(u.watchHistory)) {
-            try { wHistory = JSON.stringify(u.watchHistory); } catch(e) {}
-          } else if (typeof u.watchHistory === 'string') {
-            wHistory = u.watchHistory;
-          }
-
-          var wLater = '';
-          if (u.watchLater && Array.isArray(u.watchLater)) {
-            try { wLater = JSON.stringify(u.watchLater); } catch(e) {}
-          } else if (typeof u.watchLater === 'string') {
-            wLater = u.watchLater;
-          }
-
-          var sTier = 'Free Tier';
-          var sExp = 'None';
-          var isP = 'No';
-
-          if (u.subscription) {
-            sTier = u.subscription.tier || 'Free Tier';
-            if (u.subscription.isPermanent || sTier === 'permanent') {
-              sExp = 'Permanent VIP';
-              isP = 'Yes';
-            } else if (u.subscription.expiresAt) {
-              sExp = new Date(u.subscription.expiresAt).toISOString();
-            }
-          }
-
-          return [
-            String(u.id || ('u_' + Date.now())),
-            String(u.username || ''),
-            String(u.name || ''),
-            String(u.email || ''),
-            String(u.password || ''),
-            String(u.avatar || ''),
-            String(u.country || 'Global'),
-            u.age !== undefined && u.age !== null ? u.age : '',
-            u.isUnder18 ? 'Yes' : 'No',
-            u.joinedAt ? new Date(u.joinedAt).toISOString() : new Date().toISOString(),
-            sTier,
-            sExp,
-            isP,
-            wHistory,
-            wLater,
-            new Date().toISOString()
-          ];
+          return formatUserRowForSheet(u, uSheet);
         });
 
         if (userRows.length > 0) {
@@ -730,6 +638,128 @@ function getColVal(row, headerMap, possibleKeys, defaultIndex) {
   return '';
 }
 
+function formatUserRowForSheet(u, sheet) {
+  var headerMap = createHeaderMap(sheet);
+  var numCols = Math.max(sheet.getLastColumn(), 16);
+  var row = new Array(numCols).fill('');
+
+  var watchHistoryJson = '';
+  if (u.watchHistory && Array.isArray(u.watchHistory)) {
+    try { watchHistoryJson = JSON.stringify(u.watchHistory); } catch (e) {}
+  } else if (typeof u.watchHistory === 'string') {
+    watchHistoryJson = u.watchHistory;
+  }
+
+  var watchLaterJson = '';
+  if (u.watchLater && Array.isArray(u.watchLater)) {
+    try { watchLaterJson = JSON.stringify(u.watchLater); } catch (e) {}
+  } else if (typeof u.watchLater === 'string') {
+    watchLaterJson = u.watchLater;
+  }
+
+  var subTier = 'Free Tier';
+  var subExpires = 'None';
+  var isPerm = 'No';
+
+  if (u.subscription) {
+    subTier = u.subscription.tier || 'Free Tier';
+    if (u.subscription.isPermanent || subTier === 'permanent') {
+      subExpires = 'Permanent VIP';
+      isPerm = 'Yes';
+    } else if (u.subscription.expiresAt) {
+      subExpires = new Date(u.subscription.expiresAt).toISOString();
+    }
+  }
+
+  var joinedStr = u.joinedAt ? new Date(u.joinedAt).toISOString() : new Date().toISOString();
+
+  if (headerMap && Object.keys(headerMap).length > 0) {
+    function setField(possibleKeys, value, defaultIdx) {
+      var placed = false;
+      for (var k = 0; k < possibleKeys.length; k++) {
+        var cleanKey = possibleKeys[k].toLowerCase().replace(/[\s_\-]+/g, '');
+        if (headerMap[cleanKey] !== undefined) {
+          row[headerMap[cleanKey]] = value;
+          placed = true;
+          break;
+        }
+      }
+      if (!placed && defaultIdx !== undefined && defaultIdx < numCols) {
+        row[defaultIdx] = value;
+      }
+    }
+
+    setField(['userid', 'id', 'user_id'], String(u.id || ('u_' + Date.now())), 0);
+    setField(['username', 'user'], String(u.username || ''), 1);
+    setField(['fullname', 'name'], String(u.name || ''), 2);
+    setField(['email', 'mail'], String(u.email || ''), 3);
+    setField(['password', 'pass', 'pwd'], String(u.password || ''), 4);
+    setField(['avatar', 'picture', 'photo'], String(u.avatar || ''), 5);
+    setField(['country', 'location'], String(u.country || 'Global'), 6);
+    setField(['age'], u.age !== undefined && u.age !== null ? u.age : '', 7);
+    setField(['under18', 'minor', 'isunder18'], u.isUnder18 ? 'Yes' : 'No', 8);
+    setField(['joineddate', 'joinedat'], joinedStr, 9);
+    setField(['subscriptiontier', 'tier', 'plan'], subTier, 10);
+    setField(['vipexpiration', 'expiration'], subExpires, 11);
+    setField(['ispermanentvip', 'permanent'], isPerm, 12);
+    setField(['watchhistoryjson', 'watchhistory'], watchHistoryJson, 13);
+    setField(['watchlaterjson', 'watchlist', 'watchlater'], watchLaterJson, 14);
+    setField(['lastsynced', 'synced'], new Date().toISOString(), 15);
+  } else {
+    row = [
+      String(u.id || ('u_' + Date.now())),
+      String(u.username || ''),
+      String(u.name || ''),
+      String(u.email || ''),
+      String(u.password || ''),
+      String(u.avatar || ''),
+      String(u.country || 'Global'),
+      u.age !== undefined && u.age !== null ? u.age : '',
+      u.isUnder18 ? 'Yes' : 'No',
+      joinedStr,
+      subTier,
+      subExpires,
+      isPerm,
+      watchHistoryJson,
+      watchLaterJson,
+      new Date().toISOString()
+    ];
+  }
+
+  return row;
+}
+
+function ensureUserHeaders(sheet, defaultHeaders) {
+  if (!sheet || sheet.getLastRow() < 1) return;
+  var lastCol = Math.max(sheet.getLastColumn(), 1);
+  var existingHeaders = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+  var hasPassword = false;
+  for (var i = 0; i < existingHeaders.length; i++) {
+    var h = String(existingHeaders[i] || '').trim().toLowerCase().replace(/[\s_\-]+/g, '');
+    if (h === 'password' || h === 'pass' || h === 'pwd') {
+      hasPassword = true;
+      break;
+    }
+  }
+  if (!hasPassword) {
+    var emailColIdx = -1;
+    for (var j = 0; j < existingHeaders.length; j++) {
+      var eh = String(existingHeaders[j] || '').trim().toLowerCase().replace(/[\s_\-]+/g, '');
+      if (eh === 'email' || eh === 'mail') {
+        emailColIdx = j + 1;
+        break;
+      }
+    }
+    if (emailColIdx > 0) {
+      sheet.insertColumnAfter(emailColIdx);
+      sheet.getRange(1, emailColIdx + 1).setValue('Password').setFontWeight('bold').setBackground('#1e293b').setFontColor('#ffffff');
+    } else {
+      sheet.insertColumnAfter(lastCol);
+      sheet.getRange(1, lastCol + 1).setValue('Password').setFontWeight('bold').setBackground('#1e293b').setFontColor('#ffffff');
+    }
+  }
+}
+
 function parseUserRow(row, headerMap, idx) {
   var rawHistory = getColVal(row, headerMap, ['watchhistoryjson', 'watchhistory', 'history'], 13);
   var parsedHistory = [];
@@ -834,11 +864,13 @@ function getOrCreateUsersSheet(ss) {
   for (var i = 0; i < sheets.length; i++) {
     var name = sheets[i].getName().trim().toLowerCase();
     if (name === 'users' || name === 'user' || name === 'accounts' || name === 'members') {
+      ensureUserHeaders(sheets[i], headers);
       return sheets[i];
     }
   }
 
   if (sheets.length === 1 && (sheets[0].getName() === 'Sheet1' || sheets[0].getName() === '工作表1') && sheets[0].getLastRow() > 1) {
+    ensureUserHeaders(sheets[0], headers);
     return sheets[0];
   }
 

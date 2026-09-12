@@ -33,7 +33,7 @@ export interface GoogleSheetsRestoreData {
   supportMessages?: SupportMessage[];
 }
 
-export const DEFAULT_GOOGLE_APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxnqmJ_5bqvmQpJxKi9jo1DCHhqjoS5CB3qf60yDshgKXMbVazRd__Kc_BUnOQE1R2y/exec';
+export const DEFAULT_GOOGLE_APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxmhhr4j8TAX1ev1GOtNOMa2DLD3c-c9y_Dd7IrRsmah1Mi585n58z17BpG8IgyUsGH/exec';
 
 const OUTDATED_URL_KEYS = [
   'AKfycbwROExizYYExM0ZfiyQvPKH2wRleazEc68zv_FUtQYHuP6bqUPImi5sD0WYokBdPat6',
@@ -41,7 +41,10 @@ const OUTDATED_URL_KEYS = [
   'AKfycbxT7hlri7NWPEHbsrCliUirnfywRX91iWmz9RdtrnfBd6owESLd8NvrMbwkNIV217hL',
   'AKfycbwLBPbYLGqNS9ad7mGrZV7uwOODGWAT8_NyYU4cduZsvvIL9xdQ4269PWe85hC26FVT',
   'AKfycbzrsRrAySwbWerj7qPqkzbI_FGug-4kJ0arzpEY4jD4KJvEUefznxfgI7LeenktCEp-',
-  'AKfycbzISCRsDG1AX481duq2wm63un4ctDWJq3xbKKDYu84bgefUlsUeB55bdF3BQPgZCN82'
+  'AKfycbzISCRsDG1AX481duq2wm63un4ctDWJq3xbKKDYu84bgefUlsUeB55bdF3BQPgZCN82',
+  'AKfycbzh3EDkYvHeRysiMPD8i1ug_sJiJeR51Pw_wPa4guP89FDqXK-4ElPzEbdy1GKhm02-',
+  'AKfycbz7YNTg6z9jfeT8l4N1PQeygjYHSwPq9iW9vvDj93_O7rvjR0vLk7AiVrMtad9NUvZN',
+  'AKfycbxnqmJ_5bqvmQpJxKi9jo1DCHhqjoS5CB3qf60yDshgKXMbVazRd__Kc_BUnOQE1R2y'
 ];
 
 /**

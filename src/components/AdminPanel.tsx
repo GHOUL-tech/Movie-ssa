@@ -114,7 +114,7 @@ import {
   sendOtpViaEmail, 
   EmailJsConfig 
 } from '../services/emailService';
-import { AVATAR_PRESETS } from '../utils/avatars';
+import { AVATAR_PRESETS, DEFAULT_AVATAR, getInitialAvatar } from '../utils/avatars';
 import { getTrending, getImageUrl } from '../services/tmdb';
 
 export const AdminPanel: React.FC = () => {
@@ -1438,7 +1438,12 @@ export const AdminPanel: React.FC = () => {
                           <td className="py-3 px-4">
                             <div className="flex items-center gap-3">
                               <div className="w-9 h-9 rounded-xl overflow-hidden border border-neutral-700 bg-neutral-950 flex-shrink-0">
-                                <img src={u.avatar} alt={u.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                                <img 
+                                  src={u.avatar || getInitialAvatar(u.name || u.username || 'User')} 
+                                  alt={u.name} 
+                                  className="w-full h-full object-cover" 
+                                  referrerPolicy="no-referrer" 
+                                />
                               </div>
                               <div>
                                 <div className="font-bold text-white text-xs sm:text-sm flex items-center gap-1.5">
@@ -2973,7 +2978,12 @@ export const AdminPanel: React.FC = () => {
             <div className="flex items-center justify-between pb-3 border-b border-neutral-800">
               <div className="flex items-center gap-3">
                 <div className="w-12 h-12 rounded-2xl overflow-hidden border border-red-500/40">
-                  <img src={inspectingUser.avatar} alt={inspectingUser.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                  <img 
+                    src={inspectingUser.avatar || getInitialAvatar(inspectingUser.name || inspectingUser.username || 'User')} 
+                    alt={inspectingUser.name} 
+                    className="w-full h-full object-cover" 
+                    referrerPolicy="no-referrer" 
+                  />
                 </div>
                 <div>
                   <h3 className="text-base font-bold text-white">{inspectingUser.name}</h3>

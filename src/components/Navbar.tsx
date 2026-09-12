@@ -24,6 +24,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { MediaItem, MediaType } from '../types';
 import { searchMulti, getImageUrl } from '../services/tmdb';
 import { useAuth } from '../context/AuthContext';
+import { DEFAULT_AVATAR, getInitialAvatar } from '../utils/avatars';
 
 interface NavbarProps {
   onOpenFilter: () => void;
@@ -311,7 +312,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenFilter }) => {
                 >
                   <div className="w-7 h-7 rounded-xl overflow-hidden border border-red-500/40 bg-neutral-950 flex-shrink-0">
                     <img 
-                      src={currentUser.avatar} 
+                      src={currentUser.avatar || getInitialAvatar(currentUser.name || currentUser.username || 'User')} 
                       alt={currentUser.name} 
                       className="w-full h-full object-cover" 
                       referrerPolicy="no-referrer"
@@ -330,7 +331,12 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenFilter }) => {
                     {/* User Header */}
                     <div className="p-3 border-b border-neutral-800 flex items-center gap-3">
                       <div className="w-10 h-10 rounded-xl overflow-hidden border border-red-500/40 flex-shrink-0">
-                        <img src={currentUser.avatar} alt={currentUser.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                        <img 
+                          src={currentUser.avatar || getInitialAvatar(currentUser.name || currentUser.username || 'User')} 
+                          alt={currentUser.name} 
+                          className="w-full h-full object-cover" 
+                          referrerPolicy="no-referrer" 
+                        />
                       </div>
                       <div className="min-w-0">
                         <div className="text-xs font-bold text-white truncate">{currentUser.name}</div>
