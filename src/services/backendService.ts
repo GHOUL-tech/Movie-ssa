@@ -80,9 +80,31 @@ export async function wipeAllDataFromBackend(): Promise<boolean> {
 // 1. USER PROFILE & AUTHENTICATION
 // ==========================================
 
+const inFlightUserSaves = new Map<string, Promise<boolean>>();
+
 export async function saveUserToBackend(user: User): Promise<boolean> {
   lastLocalUpdateAt = Date.now();
-  return await saveUserToGoogleSheets(user);
+  const userId = (user.id || user.email || user.username || '').toLowerCase();
+  
+  if (userId && inFlightUserSaves.has(userId)) {
+    return inFlightUserSaves.get(userId)!;
+  }
+
+  const savePromise = (async () => {
+    try {
+      return await saveUserToGoogleSheets(user);
+    } finally {
+      if (userId) {
+        setTimeout(() => inFlightUserSaves.delete(userId), 1500);
+      }
+    }
+  })();
+
+  if (userId) {
+    inFlightUserSaves.set(userId, savePromise);
+  }
+
+  return await savePromise;
 }
 
 export async function getUserFromBackend(identifier: string): Promise<User | null> {

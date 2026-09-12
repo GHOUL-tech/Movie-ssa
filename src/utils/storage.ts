@@ -148,13 +148,6 @@ export async function hydrateStorageFromCloud(): Promise<User[]> {
 export function saveUsers(users: User[]): void {
   try {
     localStorage.setItem(USERS_KEY, JSON.stringify(users));
-    const currentId = localStorage.getItem(CURRENT_USER_ID_KEY);
-    if (currentId) {
-      const current = users.find(u => u.id === currentId);
-      if (current) {
-        saveUserToBackend(current).catch(err => console.error('Backend save error:', err));
-      }
-    }
   } catch (e) {
     console.error('Failed to save users:', e);
   }
@@ -191,8 +184,6 @@ export function setCurrentUser(user: User | null): void {
       localStorage.setItem(CURRENT_USER_ID_KEY, user.id);
       // Sync user's watchLater with global watchlist key
       saveWatchlist(user.watchLater || []);
-      // Sync to Backend (Hatchable / Firebase)
-      saveUserToBackend(user).catch(err => console.error('Backend setCurrentUser error:', err));
     } else {
       localStorage.removeItem(CURRENT_USER_ID_KEY);
     }
@@ -258,10 +249,17 @@ export function registerUser(params: {
   };
 
   users.push(newUser);
-  saveUsers(users);
-  setCurrentUser(newUser);
+  saveUsersLocally(users);
+  
+  // Set current user session locally without triggering redundant network calls
+  try {
+    localStorage.setItem(CURRENT_USER_ID_KEY, newUser.id);
+    localStorage.setItem(WATCHLIST_KEY, JSON.stringify(newUser.watchLater || []));
+  } catch (e) {
+    console.error('Error saving local registration session:', e);
+  }
 
-  // Background save to Backend (Hatchable / Firebase)
+  // Exactly ONE clean backend save call for user signup
   saveUserToBackend(newUser).catch(err => {
     console.error('Backend register save error:', err);
     addPendingUserSync(newUser);

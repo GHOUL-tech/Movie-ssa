@@ -746,7 +746,7 @@ function handleRequest(e, method) {
       output = { success: true, users: users, count: users.length };
     }
 
-    // 4. UPSERT USER
+    // 4. UPSERT USER (INSERT OR UPDATE FULL PROFILE WITH PASSWORD)
     else if (action === 'upsertUser' && params.user) {
       var u = params.user;
       var uSheet = getOrCreateUsersSheet(ss);
@@ -758,18 +758,34 @@ function handleRequest(e, method) {
       var cleanUsername = String(u.username || '').trim().toLowerCase();
 
       if (lastRow > 1) {
-        var existingData = uSheet.getRange(2, 1, lastRow - 1, 4).getValues();
+        var numCols = Math.max(uSheet.getLastColumn(), 16);
+        var existingData = uSheet.getRange(2, 1, lastRow - 1, numCols).getValues();
+        var hMap = createHeaderMap(uSheet);
         for (var i = 0; i < existingData.length; i++) {
-          var eId = String(existingData[i][0] || '').trim().toLowerCase();
-          var eUsername = String(existingData[i][1] || '').trim().toLowerCase();
-          var eEmail = String(existingData[i][3] || '').trim().toLowerCase();
+          var eId = String(getColVal(existingData[i], hMap, ['userid', 'id', 'user_id'], 0) || '').trim().toLowerCase();
+          var eUsername = String(getColVal(existingData[i], hMap, ['username', 'user'], 1) || '').trim().toLowerCase();
+          var eEmail = String(getColVal(existingData[i], hMap, ['email', 'mail'], 3) || '').trim().toLowerCase();
 
-          if ((cleanId && eId === cleanId) || (cleanEmail && eEmail === cleanEmail) || (cleanUsername && eUsername === cleanUsername)) {
+          if ((cleanId && eId && eId === cleanId) || 
+              (cleanEmail && eEmail && eEmail === cleanEmail) || 
+              (cleanUsername && eUsername && eUsername === cleanUsername)) {
             targetRow = i + 2;
             break;
           }
         }
       }
+
+      var userRowData = formatUserRowForSheet(u, uSheet);
+
+      if (targetRow > 1) {
+        uSheet.getRange(targetRow, 1, 1, userRowData.length).setValues([userRowData]);
+      } else {
+        uSheet.appendRow(userRowData);
+      }
+
+      logActivity(ss, 'User Upsert', 'User: ' + (u.name || u.username || u.id));
+      output = { success: true, message: 'User synchronized to Google Sheets Cloud Database (including Password)' };
+    }
 
       var watchHistoryJson = '';
       if (u.watchHistory && Array.isArray(u.watchHistory)) {
