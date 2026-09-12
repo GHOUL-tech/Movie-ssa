@@ -712,7 +712,7 @@ function createHeaderMap(sheet) {
 }
 
 function getColVal(row, headerMap, possibleKeys, defaultIndex) {
-  if (headerMap) {
+  if (headerMap && Object.keys(headerMap).length > 0) {
     for (var k = 0; k < possibleKeys.length; k++) {
       var cleanKey = possibleKeys[k].toLowerCase().replace(/[\s_\-]+/g, '');
       if (headerMap[cleanKey] !== undefined) {
@@ -722,6 +722,7 @@ function getColVal(row, headerMap, possibleKeys, defaultIndex) {
         }
       }
     }
+    return '';
   }
   if (defaultIndex !== undefined && defaultIndex < row.length) {
     return row[defaultIndex];

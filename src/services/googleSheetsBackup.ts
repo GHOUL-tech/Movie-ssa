@@ -33,7 +33,7 @@ export interface GoogleSheetsRestoreData {
   supportMessages?: SupportMessage[];
 }
 
-export const DEFAULT_GOOGLE_APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbz7YNTg6z9jfeT8l4N1PQeygjYHSwPq9iW9vvDj93_O7rvjR0vLk7AiVrMtad9NUvZN/exec';
+export const DEFAULT_GOOGLE_APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxnqmJ_5bqvmQpJxKi9jo1DCHhqjoS5CB3qf60yDshgKXMbVazRd__Kc_BUnOQE1R2y/exec';
 
 const OUTDATED_URL_KEYS = [
   'AKfycbwROExizYYExM0ZfiyQvPKH2wRleazEc68zv_FUtQYHuP6bqUPImi5sD0WYokBdPat6',
@@ -141,6 +141,46 @@ async function executeGoogleSheetsRequest(
     throw new Error('Google Sheets Web App URL is not configured.');
   }
 
+  const isReadAction = [
+    'ping',
+    'getUser',
+    'getAllUsers',
+    'getAllSubscriptionCodes',
+    'getSettings',
+    'getBackupData',
+    'getAll',
+    'getAllSupportMessages'
+  ].includes(action);
+
+  // Method 1 (FOR READ ACTIONS): Direct GET request
+  // Google Apps Script Web Apps handle GET with 302 redirects cleanly across all browsers without CORS issues
+  if (isReadAction) {
+    try {
+      const queryParams = new URLSearchParams();
+      queryParams.set('action', action);
+      if (payload.identifier) queryParams.set('identifier', String(payload.identifier));
+      if (payload.id) queryParams.set('id', String(payload.id));
+      if (payload.userId) queryParams.set('userId', String(payload.userId));
+      queryParams.set('_t', String(Date.now()));
+
+      const getUrl = `${targetUrl}${targetUrl.includes('?') ? '&' : '?'}${queryParams.toString()}`;
+      const getRes = await fetch(getUrl, {
+        method: 'GET',
+        redirect: 'follow',
+        headers: {
+          'Accept': 'application/json'
+        }
+      });
+
+      if (getRes.ok) {
+        const data = await getRes.json();
+        return data;
+      }
+    } catch (getErr) {
+      console.warn('Direct GET read attempt note:', getErr);
+    }
+  }
+
   const fullPayload = {
     action,
     app: 'Zinovis Cloud Streaming Service',
@@ -148,26 +188,7 @@ async function executeGoogleSheetsRequest(
     ...payload
   };
 
-  // Method A: Direct fetch to Google Apps Script
-  try {
-    const response = await fetch(targetUrl, {
-      method: 'POST',
-      redirect: 'follow',
-      headers: {
-        'Content-Type': 'text/plain;charset=utf-8'
-      },
-      body: JSON.stringify(fullPayload)
-    });
-
-    if (response.ok) {
-      const data = await response.json();
-      return data;
-    }
-  } catch (directErr) {
-    // Fall through to Method B: API Proxy
-  }
-
-  // Method B: Server Proxy (/api/sheets-proxy) for Vercel and Express
+  // Method 2: Server Proxy (/api/sheets-proxy) for Vercel and Express
   try {
     const proxyRes = await fetch('/api/sheets-proxy', {
       method: 'POST',
@@ -184,23 +205,44 @@ async function executeGoogleSheetsRequest(
       return await proxyRes.json();
     }
   } catch (proxyErr) {
-    // Fall through to Method C
+    // Continue to next method
   }
 
-  // Method C: Direct GET Query Fallback (works across all browsers and devices)
+  // Method 3: Direct POST to Google Apps Script
+  try {
+    const response = await fetch(targetUrl, {
+      method: 'POST',
+      redirect: 'follow',
+      headers: {
+        'Content-Type': 'text/plain;charset=utf-8'
+      },
+      body: JSON.stringify(fullPayload)
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      return data;
+    }
+  } catch (directErr) {
+    // Continue to next method
+  }
+
+  // Method 4: GET Fallback for mutation actions
   try {
     const queryParams = new URLSearchParams();
     queryParams.set('action', action);
     if (payload.identifier) queryParams.set('identifier', String(payload.identifier));
     if (payload.id) queryParams.set('id', String(payload.id));
     if (payload.userId) queryParams.set('userId', String(payload.userId));
-    queryParams.set('t', String(Date.now()));
+    if (payload.user) queryParams.set('user', JSON.stringify(payload.user));
+    if (payload.code) queryParams.set('code', JSON.stringify(payload.code));
+    if (payload.settings) queryParams.set('settings', JSON.stringify(payload.settings));
+    queryParams.set('_t', String(Date.now()));
 
     const getUrl = `${targetUrl}${targetUrl.includes('?') ? '&' : '?'}${queryParams.toString()}`;
     const getRes = await fetch(getUrl, {
       method: 'GET',
-      redirect: 'follow',
-      mode: 'cors'
+      redirect: 'follow'
     });
 
     if (getRes.ok) {
@@ -1266,7 +1308,7 @@ function createHeaderMap(sheet) {
 }
 
 function getColVal(row, headerMap, possibleKeys, defaultIndex) {
-  if (headerMap) {
+  if (headerMap && Object.keys(headerMap).length > 0) {
     for (var k = 0; k < possibleKeys.length; k++) {
       var cleanKey = possibleKeys[k].toLowerCase().replace(/[\s_\-]+/g, '');
       if (headerMap[cleanKey] !== undefined) {
@@ -1276,6 +1318,7 @@ function getColVal(row, headerMap, possibleKeys, defaultIndex) {
         }
       }
     }
+    return '';
   }
   if (defaultIndex !== undefined && defaultIndex < row.length) {
     return row[defaultIndex];

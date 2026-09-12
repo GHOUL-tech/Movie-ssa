@@ -387,8 +387,13 @@ export async function loginUserAsync(
     }
 
     if (remoteUser) {
-      if (password && remoteUser.password && remoteUser.password !== password) {
+      if (password && remoteUser.password && remoteUser.password.trim() && remoteUser.password !== password) {
         return { success: false, error: 'Incorrect password. Please try again.' };
+      }
+
+      // If remote user didn't have password set in sheet, attach the entered password
+      if (password && (!remoteUser.password || !remoteUser.password.trim())) {
+        remoteUser.password = password;
       }
 
       // Save into local list

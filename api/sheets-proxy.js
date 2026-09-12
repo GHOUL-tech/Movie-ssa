@@ -19,7 +19,7 @@ export default async function handler(req, res) {
 
   try {
     const { scriptUrl, payload } = req.body || {};
-    const targetUrl = (scriptUrl || process.env.VITE_GOOGLE_SHEETS_SCRIPT_URL || 'https://script.google.com/macros/s/AKfycbz7YNTg6z9jfeT8l4N1PQeygjYHSwPq9iW9vvDj93_O7rvjR0vLk7AiVrMtad9NUvZN/exec').trim();
+    const targetUrl = (scriptUrl || process.env.VITE_GOOGLE_SHEETS_SCRIPT_URL || 'https://script.google.com/macros/s/AKfycbxnqmJ_5bqvmQpJxKi9jo1DCHhqjoS5CB3qf60yDshgKXMbVazRd__Kc_BUnOQE1R2y/exec').trim();
 
     const response = await fetch(targetUrl, {
       method: 'POST',
