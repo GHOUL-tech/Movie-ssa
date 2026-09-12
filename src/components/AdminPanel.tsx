@@ -1377,8 +1377,8 @@ export const AdminPanel: React.FC = () => {
                 <p className="text-xs text-neutral-400">Manage user profiles, safety filters, and watch activity</p>
               </div>
 
-              <div className="flex items-center gap-3">
-                <div className="relative flex-1 sm:w-72">
+              <div className="flex items-center gap-2 sm:gap-3 flex-wrap sm:flex-nowrap">
+                <div className="relative flex-1 sm:w-64">
                   <Search className="w-4 h-4 text-neutral-500 absolute left-3 top-1/2 -translate-y-1/2" />
                   <input
                     type="text"
@@ -1390,7 +1390,19 @@ export const AdminPanel: React.FC = () => {
                 </div>
 
                 <button
+                  onClick={handlePullFromGoogleSheets}
+                  disabled={isPullingFromSheets}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/30 text-emerald-300 text-xs font-semibold transition-colors shadow-sm disabled:opacity-50"
+                  title="Pull users directly from Google Sheets"
+                >
+                  <Download className={`w-3.5 h-3.5 ${isPullingFromSheets ? 'animate-bounce' : ''}`} />
+                  <span className="hidden sm:inline">Sync from Sheets</span>
+                  <span className="sm:hidden">Sheets</span>
+                </button>
+
+                <button
                   onClick={loadUsers}
+                  disabled={loadingUsers}
                   className="p-2.5 rounded-xl bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-neutral-300 hover:text-white transition-colors"
                   title="Refresh Users List"
                 >
@@ -2789,6 +2801,33 @@ export const AdminPanel: React.FC = () => {
                       <div>Copy the generated Web App URL and paste it into the input above!</div>
                     </li>
                   </ol>
+
+                  {/* Vercel Deployment Instructions */}
+                  <div className="mt-4 p-3.5 rounded-2xl bg-neutral-950/80 border border-emerald-500/20 space-y-2">
+                    <div className="flex items-center gap-2 text-xs font-bold text-emerald-400">
+                      <Globe className="w-3.5 h-3.5" />
+                      <span>Vercel Cloud Deployment</span>
+                    </div>
+                    <p className="text-[11px] text-neutral-400 leading-relaxed">
+                      Deploying to Vercel? In your Vercel Project Settings &gt; Environment Variables, add:
+                    </p>
+                    <div className="flex items-center justify-between gap-2 p-2 rounded-xl bg-neutral-900 border border-neutral-800 text-[11px] font-mono text-emerald-300">
+                      <span className="truncate">VITE_GOOGLE_SHEETS_SCRIPT_URL</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard.writeText('VITE_GOOGLE_SHEETS_SCRIPT_URL');
+                          alert('Copied VITE_GOOGLE_SHEETS_SCRIPT_URL to clipboard!');
+                        }}
+                        className="px-2 py-1 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-neutral-300 text-[10px] cursor-pointer"
+                      >
+                        Copy
+                      </button>
+                    </div>
+                    <p className="text-[10px] text-neutral-500">
+                      Once added, all visitors and devices accessing your Vercel website will automatically sync with your Google Sheets database.
+                    </p>
+                  </div>
                 </div>
               </div>
 

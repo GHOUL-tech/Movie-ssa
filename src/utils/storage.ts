@@ -57,58 +57,90 @@ export function getAllUsers(): User[] {
 }
 
 /**
- * Hydrates local storage by pulling all user accounts from the primary Firebase Firestore database.
- * Merges local and remote users so no offline or recent data is lost.
+ * Hydrates local storage by pulling all user accounts, subscription codes, and settings
+ * from the primary Google Sheets Cloud Data Server.
+ * Merges local and remote users so no offline or recent data is lost across devices.
  */
 export async function hydrateStorageFromFirebase(): Promise<User[]> {
+  return await hydrateStorageFromCloud();
+}
+
+export async function hydrateStorageFromCloud(): Promise<User[]> {
   try {
+    const { fetchBackupFromGoogleSheets } = await import('../services/googleSheetsBackup');
+    const backupRes = await fetchBackupFromGoogleSheets();
+
+    if (backupRes.success && backupRes.data) {
+      const data = backupRes.data;
+
+      // 1. Hydrate subscription codes
+      if (data.subscriptionCodes && Array.isArray(data.subscriptionCodes)) {
+        localStorage.setItem(SUBSCRIPTION_CODES_KEY, JSON.stringify(data.subscriptionCodes));
+      }
+
+      // 2. Hydrate system settings
+      if (data.settings) {
+        const curSettings = getSystemSettings();
+        const mergedSettings = { ...curSettings, ...data.settings };
+        localStorage.setItem(SYSTEM_SETTINGS_KEY, JSON.stringify(mergedSettings));
+      }
+
+      // 3. Hydrate users
+      if (data.users && Array.isArray(data.users) && data.users.length > 0) {
+        const localUsers = getAllUsers();
+        const userMap = new Map<string, User>();
+
+        localUsers.forEach(u => userMap.set(u.id, u));
+
+        data.users.forEach(ru => {
+          const local = userMap.get(ru.id);
+          if (local) {
+            const watchLaterMap = new Map();
+            (ru.watchLater || []).forEach(item => watchLaterMap.set(`${item.id}_${item.media_type}`, item));
+            (local.watchLater || []).forEach(item => watchLaterMap.set(`${item.id}_${item.media_type}`, item));
+
+            const historyMap = new Map();
+            (ru.watchHistory || []).forEach(item => historyMap.set(`${item.id}_${item.media_type}`, item));
+            (local.watchHistory || []).forEach(item => historyMap.set(`${item.id}_${item.media_type}`, item));
+
+            userMap.set(ru.id, {
+              ...ru,
+              ...local,
+              subscription: ru.subscription || local.subscription,
+              watchLater: Array.from(watchLaterMap.values()),
+              watchHistory: Array.from(historyMap.values()).sort((a: any, b: any) => (b.watched_at || 0) - (a.watched_at || 0)).slice(0, 50),
+            });
+          } else {
+            userMap.set(ru.id, ru);
+          }
+        });
+
+        const merged = Array.from(userMap.values());
+        saveUsersLocally(merged);
+
+        const currentId = localStorage.getItem(CURRENT_USER_ID_KEY);
+        if (currentId && userMap.has(currentId)) {
+          const updatedCurrent = userMap.get(currentId)!;
+          saveWatchlistLocally(updatedCurrent.watchLater || []);
+        }
+
+        return merged;
+      }
+    }
+
+    // Fallback if backupRes empty: fetch users directly
     const remoteUsers = await getAllUsersFromBackend();
     if (Array.isArray(remoteUsers) && remoteUsers.length > 0) {
       const localUsers = getAllUsers();
       const userMap = new Map<string, User>();
-
-      // Put local users first
       localUsers.forEach(u => userMap.set(u.id, u));
-
-      // Merge remote users over local, preferring richer data
-      remoteUsers.forEach(ru => {
-        const local = userMap.get(ru.id);
-        if (local) {
-          // Merge arrays like watchLater & watchHistory without losing local additions
-          const watchLaterMap = new Map();
-          (ru.watchLater || []).forEach(item => watchLaterMap.set(`${item.id}_${item.media_type}`, item));
-          (local.watchLater || []).forEach(item => watchLaterMap.set(`${item.id}_${item.media_type}`, item));
-
-          const historyMap = new Map();
-          (ru.watchHistory || []).forEach(item => historyMap.set(`${item.id}_${item.media_type}`, item));
-          (local.watchHistory || []).forEach(item => historyMap.set(`${item.id}_${item.media_type}`, item));
-
-          userMap.set(ru.id, {
-            ...ru,
-            ...local,
-            subscription: ru.subscription || local.subscription,
-            watchLater: Array.from(watchLaterMap.values()),
-            watchHistory: Array.from(historyMap.values()).sort((a: any, b: any) => (b.watched_at || 0) - (a.watched_at || 0)).slice(0, 50),
-          });
-        } else {
-          userMap.set(ru.id, ru);
-        }
-      });
-
+      remoteUsers.forEach(ru => userMap.set(ru.id, { ...(userMap.get(ru.id) || {}), ...ru }));
       const merged = Array.from(userMap.values());
       saveUsersLocally(merged);
-
-      // Check current user
-      const currentId = localStorage.getItem(CURRENT_USER_ID_KEY);
-      if (currentId && userMap.has(currentId)) {
-        const updatedCurrent = userMap.get(currentId)!;
-        saveWatchlistLocally(updatedCurrent.watchLater || []);
-      }
-
       return merged;
     }
   } catch (err) {
-    console.warn('Firebase user storage hydration notice:', err);
+    console.warn('Google Sheets cloud storage hydration notice:', err);
   }
   return getAllUsers();
 }

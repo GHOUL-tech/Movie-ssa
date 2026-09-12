@@ -21,10 +21,39 @@ app.get('/api/health', (req, res) => {
 app.get('/api/system/status', (req, res) => {
   res.json({
     status: 'healthy',
-    backend: 'Firebase Cloud Firestore Engine',
-    database: 'ai-studio-zinovis-4030a834-9ba9-449a-b2bf-8041fe4e9a68',
+    backend: 'Google Sheets Cloud Data Server',
+    engine: 'Google Apps Script Web App',
     timestamp: Date.now()
   });
+});
+
+// 2.5 Google Sheets Proxy Endpoint (Bypasses browser CORS & adblockers for reliable cross-device sync)
+app.post('/api/sheets-proxy', async (req, res) => {
+  try {
+    const { scriptUrl, payload } = req.body || {};
+    const targetUrl = (scriptUrl || process.env.VITE_GOOGLE_SHEETS_SCRIPT_URL || '').trim();
+
+    if (!targetUrl) {
+      return res.status(400).json({ success: false, error: 'Google Sheets Script URL is required.' });
+    }
+
+    const response = await fetch(targetUrl, {
+      method: 'POST',
+      redirect: 'follow',
+      headers: {
+        'Content-Type': 'text/plain;charset=utf-8'
+      },
+      body: JSON.stringify(payload || {})
+    });
+
+    const data = await response.json();
+    res.json(data);
+  } catch (err: any) {
+    res.status(500).json({
+      success: false,
+      error: err?.message || 'Failed to proxy request to Google Sheets'
+    });
+  }
 });
 
 // 3. TMDB Proxy Endpoint

@@ -1,18 +1,32 @@
 /**
  * ZINOVIS UNIFIED BACKEND SERVICE LAYER
- * Powered by Local Storage and Google Sheets Backup.
+ * Powered by Google Sheets Cloud Data Server and fast client-side caching.
+ * Provides 100% cross-device data persistence, user auth, and real-time syncing.
  */
 
-import { User, SupportMessage, SystemSettings, SubscriptionCode, SubscriptionTier, WatchHistoryItem, WatchlistItem } from '../types';
+import { User, SupportMessage, SystemSettings, SubscriptionCode, WatchHistoryItem, WatchlistItem } from '../types';
 import { 
-  dispatchUserToGoogleSheets, 
-  dispatchSubscriptionCodeToGoogleSheets, 
-  dispatchSupportMessageToGoogleSheets, 
-  dispatchSettingsToGoogleSheets 
+  saveUserToGoogleSheets,
+  fetchUserFromGoogleSheets,
+  fetchAllUsersFromGoogleSheets,
+  deleteUserFromGoogleSheets,
+  syncWatchHistoryToGoogleSheets,
+  syncWatchLaterToGoogleSheets,
+  saveCodeToGoogleSheets,
+  fetchAllCodesFromGoogleSheets,
+  deleteCodeFromGoogleSheets,
+  deleteAllCodesFromGoogleSheets,
+  saveSettingsToGoogleSheets,
+  fetchSettingsFromGoogleSheets,
+  sendSupportMessageToGoogleSheets,
+  fetchSupportMessagesFromGoogleSheets,
+  deleteSupportThreadFromGoogleSheets,
+  fetchBackupFromGoogleSheets,
+  testGoogleSheetsConnection
 } from './googleSheetsBackup';
 
 export interface BackendStatusResult {
-  provider: 'local';
+  provider: 'google_sheets';
   connected: boolean;
   quotaStatus: string;
   quotaExhausted?: boolean;
@@ -21,15 +35,25 @@ export interface BackendStatusResult {
   details?: any;
 }
 
+let lastLocalUpdateAt = 0;
+
+export function setLastLocalUpdateAt() {
+  lastLocalUpdateAt = Date.now();
+}
+
 /**
  * Diagnostic tool to verify backend connectivity
  */
 export async function testBackendConnection(): Promise<BackendStatusResult> {
+  const result = await testGoogleSheetsConnection();
   return {
-    provider: 'local',
-    connected: true,
-    quotaStatus: 'Active (Local Data + Google Sheets Backup)',
+    provider: 'google_sheets',
+    connected: result.connected,
+    quotaStatus: result.connected ? 'Active (Google Sheets Cloud Data Server)' : 'Disconnected (Check Web App URL)',
     quotaExhausted: false,
+    latency: result.latency,
+    error: result.connected ? undefined : result.message,
+    details: result
   };
 }
 
@@ -56,40 +80,26 @@ export async function wipeAllDataFromBackend(): Promise<boolean> {
 // 1. USER PROFILE & AUTHENTICATION
 // ==========================================
 
-let lastLocalUpdateAt = 0;
-
-export function setLastLocalUpdateAt() {
-  lastLocalUpdateAt = Date.now();
-}
-
 export async function saveUserToBackend(user: User): Promise<boolean> {
   lastLocalUpdateAt = Date.now();
-  dispatchUserToGoogleSheets(user);
-  return true;
+  return await saveUserToGoogleSheets(user);
 }
 
 export async function getUserFromBackend(identifier: string): Promise<User | null> {
-  return null;
+  return await fetchUserFromGoogleSheets(identifier);
 }
 
 export async function getAllUsersFromBackend(): Promise<User[]> {
-  return [];
+  return await fetchAllUsersFromGoogleSheets();
 }
 
 export async function deleteUserFromBackend(userId: string): Promise<boolean> {
   lastLocalUpdateAt = Date.now();
-  const { getGoogleSheetsScriptUrl } = await import('./googleSheetsBackup');
-  const url = getGoogleSheetsScriptUrl();
-  if (url) {
-    fetch(url, {
-      method: 'POST',
-      redirect: 'follow',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify({ action: 'deleteUser', userId })
-    }).catch(console.warn);
-  }
-  return true;
+  return await deleteUserFromGoogleSheets(userId);
 }
+
+let userDocCallbacks: Array<{ userId: string, cb: (user: User | null) => void }> = [];
+let allUsersCallbacks: Array<(users: User[]) => void> = [];
 
 export function subscribeToUserDoc(userId: string, callback: (user: User | null) => void): (() => void) {
   const sub = { userId, cb: callback };
@@ -111,20 +121,32 @@ export function subscribeToAllUsers(callback: (users: User[]) => void): (() => v
 // ==========================================
 
 export async function getSystemSettingsFromBackend(): Promise<SystemSettings> {
+  const remote = await fetchSettingsFromGoogleSheets();
+  if (remote) {
+    return {
+      subscriptionRequired: !!remote.subscriptionRequired,
+      shopUrl: remote.shopUrl || 'https://zinovis.tv/shop',
+      googleSheetsScriptUrl: remote.googleSheetsScriptUrl || '',
+      googleSheetsAutoBackup: remote.googleSheetsAutoBackup ?? true,
+      updatedAt: remote.updatedAt || Date.now()
+    };
+  }
+
   return {
     subscriptionRequired: false,
     shopUrl: 'https://zinovis.tv/shop',
     googleSheetsScriptUrl: '',
-    googleSheetsAutoBackup: false,
+    googleSheetsAutoBackup: true,
     updatedAt: Date.now()
   };
 }
 
 export async function saveSystemSettingsToBackend(settings: Partial<SystemSettings>): Promise<boolean> {
   lastLocalUpdateAt = Date.now();
-  dispatchSettingsToGoogleSheets(settings);
-  return true;
+  return await saveSettingsToGoogleSheets(settings);
 }
+
+let systemSettingsCallbacks: Array<(settings: SystemSettings) => void> = [];
 
 export function subscribeToSystemSettings(callback: (settings: SystemSettings) => void): (() => void) {
   systemSettingsCallbacks.push(callback);
@@ -138,48 +160,25 @@ export function subscribeToSystemSettings(callback: (settings: SystemSettings) =
 // ==========================================
 
 export async function getAllSubscriptionCodesFromBackend(): Promise<SubscriptionCode[]> {
-  return [];
+  return await fetchAllCodesFromGoogleSheets();
 }
 
 export async function saveSubscriptionCodeToBackend(code: SubscriptionCode): Promise<boolean> {
   lastLocalUpdateAt = Date.now();
-  dispatchSubscriptionCodeToGoogleSheets(code);
-  return true;
+  return await saveCodeToGoogleSheets(code);
 }
 
 export async function deleteSubscriptionCodeFromBackend(codeId: string): Promise<boolean> {
   lastLocalUpdateAt = Date.now();
-  const { getGoogleSheetsScriptUrl } = await import('./googleSheetsBackup');
-  const url = getGoogleSheetsScriptUrl();
-  if (url) {
-    fetch(url, {
-      method: 'POST',
-      redirect: 'follow',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify({ action: 'deleteSubscriptionCode', codeId })
-    }).catch(console.warn);
-  }
-  return true;
+  return await deleteCodeFromGoogleSheets(codeId);
 }
 
 export async function deleteAllSubscriptionCodesFromBackend(): Promise<boolean> {
   lastLocalUpdateAt = Date.now();
-  const { getGoogleSheetsScriptUrl } = await import('./googleSheetsBackup');
-  const url = getGoogleSheetsScriptUrl();
-  if (url) {
-    try {
-      await fetch(url, {
-        method: 'POST',
-        redirect: 'follow',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({ action: 'deleteAllSubscriptionCodes' })
-      });
-    } catch (e) {
-      console.warn('Failed to delete all subscription codes:', e);
-    }
-  }
-  return true;
+  return await deleteAllCodesFromGoogleSheets();
 }
+
+let subscriptionCodeCallbacks: Array<(codes: SubscriptionCode[]) => void> = [];
 
 export function subscribeToSubscriptionCodes(callback: (codes: SubscriptionCode[]) => void): (() => void) {
   subscriptionCodeCallbacks.push(callback);
@@ -192,100 +191,9 @@ export function subscribeToSubscriptionCodes(callback: (codes: SubscriptionCode[
 // 4. LIVE SUPPORT MESSAGING
 // ==========================================
 
-// ==========================================
-// BACKGROUND POLLING FOR REAL-TIME SHEETS
-// ==========================================
-
-let isPolling = false;
 let globalSupportMessages: SupportMessage[] = [];
 let allSupportCallbacks: Array<(msgs: SupportMessage[]) => void> = [];
 let userSupportCallbacks: Array<{ ids: string[], cb: (msgs: SupportMessage[]) => void }> = [];
-
-let systemSettingsCallbacks: Array<(settings: SystemSettings) => void> = [];
-let userDocCallbacks: Array<{ userId: string, cb: (user: User | null) => void }> = [];
-let allUsersCallbacks: Array<(users: User[]) => void> = [];
-let subscriptionCodeCallbacks: Array<(codes: SubscriptionCode[]) => void> = [];
-
-async function pollGoogleSheets() {
-  if (isPolling) return;
-  // Prevent overwriting local changes immediately (wait 8 seconds for sheets to process)
-  if (Date.now() - lastLocalUpdateAt < 8000) return;
-  isPolling = true;
-
-  try {
-    const { fetchBackupFromGoogleSheets } = await import('./googleSheetsBackup');
-    const { saveUsersLocally, getAllUsers } = await import('../utils/storage');
-    const res = await fetchBackupFromGoogleSheets();
-    
-    if (res.success && res.data) {
-      const data = res.data;
-      
-      // 1. Sync Users
-      if (data.users) {
-        const localUsers = getAllUsers();
-        const mergedUsers = data.users.map(remoteUser => {
-          const localUser = localUsers.find(u => u.id === remoteUser.id);
-          if (localUser) {
-            return {
-              ...remoteUser,
-              watchLater: localUser.watchLater || [],
-              watchHistory: localUser.watchHistory || []
-            };
-          }
-          return remoteUser;
-        });
-
-        // Also if a local user is NOT in remote, they are deleted
-        // So we just save mergedUsers
-        saveUsersLocally(mergedUsers);
-        
-        // If the current user was deleted, we should log them out? 
-        // We'll just emit the updated users. The UI will see them as null if they were deleted.
-        allUsersCallbacks.forEach(cb => cb(mergedUsers));
-        userDocCallbacks.forEach(sub => {
-          const u = mergedUsers.find(u => u.id === sub.userId) || null;
-          sub.cb(u);
-        });
-      }
-      
-      // 2. Sync Subscription Codes
-      if (data.subscriptionCodes) {
-        localStorage.setItem('zinovis_subscription_codes_v1', JSON.stringify(data.subscriptionCodes));
-        subscriptionCodeCallbacks.forEach(cb => cb(data.subscriptionCodes!));
-      }
-
-      // 3. Sync Settings
-      if (data.settings) {
-        const currentSettings = JSON.parse(localStorage.getItem('zinovis_system_settings_v1') || '{}');
-        const newSettings = { ...currentSettings, ...data.settings };
-        localStorage.setItem('zinovis_system_settings_v1', JSON.stringify(newSettings));
-        systemSettingsCallbacks.forEach(cb => cb(newSettings as SystemSettings));
-      }
-
-      // 4. Sync Support Messages
-      if (data.supportMessages) {
-        globalSupportMessages = data.supportMessages;
-        // Trigger all support callbacks
-        allSupportCallbacks.forEach(cb => cb([...globalSupportMessages]));
-        userSupportCallbacks.forEach(sub => {
-          const userMsgs = globalSupportMessages.filter(m => sub.ids.includes(m.userId.toLowerCase()));
-          sub.cb(userMsgs);
-        });
-      }
-    } else {
-      console.warn('Real-time poll failed:', res.message, res.error);
-    }
-  } catch (err) {
-    console.error('Failed to poll Google Sheets:', err);
-  } finally {
-    isPolling = false;
-  }
-}
-
-// Start polling every 12 seconds
-setInterval(pollGoogleSheets, 12000);
-// Initial fetch
-setTimeout(pollGoogleSheets, 500);
 
 export async function sendSupportMessageToBackend(msg: Omit<SupportMessage, 'id' | 'createdAt' | 'read'> & Partial<Pick<SupportMessage, 'id' | 'createdAt' | 'read'>>): Promise<boolean> {
   lastLocalUpdateAt = Date.now();
@@ -308,10 +216,7 @@ export async function sendSupportMessageToBackend(msg: Omit<SupportMessage, 'id'
     sub.cb(userMsgs);
   });
 
-  // Real-time mirror to Google Sheets
-  dispatchSupportMessageToGoogleSheets(finalMsg);
-
-  return true;
+  return await sendSupportMessageToGoogleSheets(finalMsg);
 }
 
 export function subscribeToAllSupportMessages(callback: (messages: SupportMessage[]) => void): (() => void) {
@@ -336,12 +241,11 @@ export function subscribeToUserSupportMessages(userIdOrIds: string | string[], c
 }
 
 export async function markSupportMessageRead(messageId: string): Promise<void> {
-  // We need an endpoint for this or we just push an updated message
   const msg = globalSupportMessages.find(m => m.id === messageId);
   if (msg && !msg.read) {
     msg.read = true;
-    dispatchSupportMessageToGoogleSheets(msg);
     allSupportCallbacks.forEach(cb => cb([...globalSupportMessages]));
+    sendSupportMessageToGoogleSheets(msg).catch(() => {});
   }
 }
 
@@ -351,7 +255,7 @@ export async function markSupportThreadAsRead(userId: string, unreadIds: string[
     if (msg.userId === userId && !msg.read) {
       if (unreadIds.length === 0 || unreadIds.includes(msg.id)) {
         msg.read = true;
-        dispatchSupportMessageToGoogleSheets(msg);
+        sendSupportMessageToGoogleSheets(msg).catch(() => {});
         updated = true;
       }
     }
@@ -362,45 +266,115 @@ export async function markSupportThreadAsRead(userId: string, unreadIds: string[
 }
 
 export async function deleteSupportThreadFromBackend(userId: string): Promise<void> {
-  // To truly delete from sheets, we would need a delete endpoint, but for now we can just clear it locally and hope the next full backup push removes it.
-  // Wait, if Sheets is the source of truth, the script needs a way to delete support messages.
-  // Actually, we can push an action 'deleteSupportThread' to the sheets script.
   globalSupportMessages = globalSupportMessages.filter(m => m.userId !== userId);
   allSupportCallbacks.forEach(cb => cb([...globalSupportMessages]));
-  
-  const { getGoogleSheetsScriptUrl } = await import('./googleSheetsBackup');
-  const url = getGoogleSheetsScriptUrl();
-  if (url) {
-    fetch(url, {
-      method: 'POST',
-      redirect: 'follow',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify({ action: 'deleteSupportThread', userId })
-    }).catch(console.warn);
-  }
+  await deleteSupportThreadFromGoogleSheets(userId);
 }
 
 // ==========================================
 // 5. WATCH HISTORY & WATCHLIST
 // ==========================================
 
-export async function syncWatchHistoryToBackend(userId: string, history: WatchHistoryItem[]): Promise<void> {}
+export async function syncWatchHistoryToBackend(userId: string, history: WatchHistoryItem[]): Promise<void> {
+  await syncWatchHistoryToGoogleSheets(userId, history);
+}
 
-export async function syncWatchLaterToBackend(userId: string, watchLater: WatchlistItem[]): Promise<void> {}
+export async function syncWatchLaterToBackend(userId: string, watchLater: WatchlistItem[]): Promise<void> {
+  await syncWatchLaterToGoogleSheets(userId, watchLater);
+}
 
 // ==========================================
-// 6. PASSWORD RESET & OTP VERIFICATION
+// 6. BACKGROUND POLLING FOR REAL-TIME SHEETS
+// ==========================================
+
+let isPolling = false;
+
+async function pollGoogleSheets() {
+  if (isPolling) return;
+  // Wait at least 6 seconds after a local change to prevent race conditions
+  if (Date.now() - lastLocalUpdateAt < 6000) return;
+  isPolling = true;
+
+  try {
+    const { saveUsersLocally, getAllUsers } = await import('../utils/storage');
+    const res = await fetchBackupFromGoogleSheets();
+    
+    if (res.success && res.data) {
+      const data = res.data;
+      
+      // 1. Sync Users
+      if (data.users && Array.isArray(data.users) && data.users.length > 0) {
+        const localUsers = getAllUsers();
+        const mergedUsers = data.users.map(remoteUser => {
+          const localUser = localUsers.find(u => u.id === remoteUser.id || (u.email && u.email.toLowerCase() === remoteUser.email?.toLowerCase()));
+          if (localUser) {
+            return {
+              ...remoteUser,
+              // Keep newer history or watchlist if local has more recent activity
+              watchLater: (localUser.watchLater && localUser.watchLater.length > (remoteUser.watchLater?.length || 0)) ? localUser.watchLater : (remoteUser.watchLater || []),
+              watchHistory: (localUser.watchHistory && localUser.watchHistory.length > (remoteUser.watchHistory?.length || 0)) ? localUser.watchHistory : (remoteUser.watchHistory || [])
+            };
+          }
+          return remoteUser;
+        });
+
+        saveUsersLocally(mergedUsers);
+        
+        allUsersCallbacks.forEach(cb => cb(mergedUsers));
+        userDocCallbacks.forEach(sub => {
+          const u = mergedUsers.find(u => u.id === sub.userId) || null;
+          sub.cb(u);
+        });
+      }
+      
+      // 2. Sync Subscription Codes
+      if (data.subscriptionCodes && Array.isArray(data.subscriptionCodes)) {
+        localStorage.setItem('zinovis_subscription_codes_v1', JSON.stringify(data.subscriptionCodes));
+        subscriptionCodeCallbacks.forEach(cb => cb(data.subscriptionCodes!));
+      }
+
+      // 3. Sync Settings
+      if (data.settings) {
+        const currentSettings = JSON.parse(localStorage.getItem('zinovis_system_settings_v1') || '{}');
+        const newSettings = { ...currentSettings, ...data.settings };
+        localStorage.setItem('zinovis_system_settings_v1', JSON.stringify(newSettings));
+        systemSettingsCallbacks.forEach(cb => cb(newSettings as SystemSettings));
+      }
+
+      // 4. Sync Support Messages
+      if (data.supportMessages && Array.isArray(data.supportMessages)) {
+        globalSupportMessages = data.supportMessages;
+        allSupportCallbacks.forEach(cb => cb([...globalSupportMessages]));
+        userSupportCallbacks.forEach(sub => {
+          const userMsgs = globalSupportMessages.filter(m => sub.ids.includes(m.userId.toLowerCase()));
+          sub.cb(userMsgs);
+        });
+      }
+    }
+  } catch (err) {
+    console.warn('Real-time Google Sheets poll note:', err);
+  } finally {
+    isPolling = false;
+  }
+}
+
+// Start polling every 12 seconds
+setInterval(pollGoogleSheets, 12000);
+// Initial fetch after brief delay
+setTimeout(pollGoogleSheets, 600);
+
+// ==========================================
+// 7. PASSWORD RESET & OTP VERIFICATION
 // ==========================================
 
 export async function requestPasswordResetOtp(email: string, userId?: string, userName?: string): Promise<{ success: boolean; message: string; otpCode?: string }> {
   const cleanEmail = email.trim().toLowerCase();
-  
   const generatedOtp = Math.floor(100000 + Math.random() * 900000).toString();
 
-  // Save to local storage
   localStorage.setItem(`zinovis_otp_${cleanEmail}`, JSON.stringify({
     code: generatedOtp,
     userId,
+    userName,
     expiresAt: Date.now() + 15 * 60 * 1000 // 15 mins
   }));
 
