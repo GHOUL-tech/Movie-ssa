@@ -81,9 +81,9 @@ export const AuthModal: React.FC = () => {
   const [showSignupPassword, setShowSignupPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
-  // Photo / Avatar mode: 'initial' | 'anime' | 'preset' | 'custom'
-  const [avatarCategory, setAvatarCategory] = useState<'initial' | 'anime' | 'presets'>('initial');
-  const [selectedAvatarUrl, setSelectedAvatarUrl] = useState<string>('');
+  // Photo / Avatar mode: 'presets' | 'initial'
+  const [avatarCategory, setAvatarCategory] = useState<'presets' | 'initial'>('presets');
+  const [selectedAvatarUrl, setSelectedAvatarUrl] = useState<string>(AVATAR_PRESETS[0].url);
 
   // Errors & loading
   const [error, setError] = useState<string | null>(null);
@@ -112,7 +112,7 @@ export const AuthModal: React.FC = () => {
   const nameInitialAvatar = getInitialAvatar(signupName || 'User');
   const effectiveAvatar = avatarCategory === 'initial' 
     ? nameInitialAvatar 
-    : (selectedAvatarUrl || (avatarCategory === 'anime' ? ANIME_AVATARS[0].url : AVATAR_PRESETS[0].url));
+    : (selectedAvatarUrl || AVATAR_PRESETS[0].url);
 
   if (!isAuthModalOpen) return null;
 
@@ -1019,13 +1019,31 @@ ${EMAILJS_DRAFT_TEMPLATE.plainText}
             <div className="pt-1 space-y-2">
               <div className="flex items-center justify-between">
                 <label className="text-xs font-bold text-neutral-300">
-                  Profile Photo (Photo or Anime)
+                  Profile Photo
                 </label>
-                <span className="text-[11px] text-neutral-500">Auto-suggests initial if empty</span>
+                <span className="text-[11px] text-neutral-500">Pick a photo or use name initial</span>
               </div>
 
               {/* Avatar Category Selector */}
               <div className="flex p-1 bg-neutral-950 border border-neutral-800 rounded-xl text-xs">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAvatarCategory('presets');
+                    if (!selectedAvatarUrl || selectedAvatarUrl.startsWith('data:')) {
+                      setSelectedAvatarUrl(AVATAR_PRESETS[0].url);
+                    }
+                  }}
+                  className={`flex-1 py-1.5 rounded-lg font-semibold transition-all flex items-center justify-center gap-1.5 ${
+                    avatarCategory === 'presets'
+                      ? 'bg-neutral-800 text-white shadow-sm'
+                      : 'text-neutral-400 hover:text-neutral-200'
+                  }`}
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-red-400" />
+                  <span>Profile Photos</span>
+                </button>
+
                 <button
                   type="button"
                   onClick={() => {
@@ -1041,45 +1059,39 @@ ${EMAILJS_DRAFT_TEMPLATE.plainText}
                   <Smile className="w-3.5 h-3.5 text-amber-400" />
                   <span>Name Initial</span>
                 </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setAvatarCategory('anime');
-                    if (!selectedAvatarUrl || selectedAvatarUrl.startsWith('data:')) {
-                      setSelectedAvatarUrl(ANIME_AVATARS[0].url);
-                    }
-                  }}
-                  className={`flex-1 py-1.5 rounded-lg font-semibold transition-all flex items-center justify-center gap-1.5 ${
-                    avatarCategory === 'anime'
-                      ? 'bg-neutral-800 text-white shadow-sm'
-                      : 'text-neutral-400 hover:text-neutral-200'
-                  }`}
-                >
-                  <Sparkles className="w-3.5 h-3.5 text-pink-400" />
-                  <span>Anime Heroes</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setAvatarCategory('presets');
-                    if (!selectedAvatarUrl || selectedAvatarUrl.startsWith('data:')) {
-                      setSelectedAvatarUrl(AVATAR_PRESETS[0].url);
-                    }
-                  }}
-                  className={`flex-1 py-1.5 rounded-lg font-semibold transition-all flex items-center justify-center gap-1.5 ${
-                    avatarCategory === 'presets'
-                      ? 'bg-neutral-800 text-white shadow-sm'
-                      : 'text-neutral-400 hover:text-neutral-200'
-                  }`}
-                >
-                  <Film className="w-3.5 h-3.5 text-red-400" />
-                  <span>VIP Streamers</span>
-                </button>
               </div>
 
               {/* Category Display */}
+              {avatarCategory === 'presets' && (
+                <div className="grid grid-cols-6 gap-2 pt-1">
+                  {AVATAR_PRESETS.map((preset) => (
+                    <button
+                      key={preset.id}
+                      type="button"
+                      onClick={() => setSelectedAvatarUrl(preset.url)}
+                      className={`relative aspect-square rounded-2xl overflow-hidden border-2 transition-all group ${
+                        selectedAvatarUrl === preset.url
+                          ? 'border-red-500 scale-105 shadow-md shadow-red-500/40 ring-2 ring-red-500/30'
+                          : 'border-neutral-800 opacity-60 hover:opacity-100 hover:border-neutral-600'
+                      }`}
+                      title={preset.name}
+                    >
+                      <img 
+                        src={preset.url} 
+                        alt={preset.name} 
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform" 
+                        referrerPolicy="no-referrer"
+                      />
+                      {selectedAvatarUrl === preset.url && (
+                        <div className="absolute inset-0 bg-red-600/30 flex items-center justify-center">
+                          <Check className="w-3.5 h-3.5 text-white stroke-[3]" />
+                        </div>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
+
               {avatarCategory === 'initial' && (
                 <div className="p-3 rounded-2xl bg-neutral-950 border border-neutral-800 flex items-center gap-3">
                   <div className="w-12 h-12 rounded-2xl overflow-hidden border-2 border-red-500 shadow-md shadow-red-500/20 flex-shrink-0">
@@ -1095,60 +1107,6 @@ ${EMAILJS_DRAFT_TEMPLATE.plainText}
                     <p className="text-[11px] text-neutral-400 mt-0.5">
                       Automatically renders a vibrant lettermark using your name ({signupName || 'User'}).
                     </p>
-                  </div>
-                </div>
-              )}
-
-              {avatarCategory === 'anime' && (
-                <div>
-                  <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
-                    {ANIME_AVATARS.map((preset) => (
-                      <button
-                        key={preset.id}
-                        type="button"
-                        onClick={() => setSelectedAvatarUrl(preset.url)}
-                        className={`relative flex-shrink-0 w-12 h-12 rounded-2xl overflow-hidden border-2 transition-all ${
-                          selectedAvatarUrl === preset.url
-                            ? 'border-red-500 scale-105 shadow-md shadow-red-500/40 ring-2 ring-red-500/30'
-                            : 'border-neutral-800 opacity-60 hover:opacity-100 hover:border-neutral-600'
-                        }`}
-                        title={preset.name}
-                      >
-                        <img src={preset.url} alt={preset.name} className="w-full h-full object-cover" />
-                        {selectedAvatarUrl === preset.url && (
-                          <div className="absolute inset-0 bg-red-600/30 flex items-center justify-center">
-                            <Check className="w-3.5 h-3.5 text-white stroke-[3]" />
-                          </div>
-                        )}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {avatarCategory === 'presets' && (
-                <div>
-                  <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
-                    {AVATAR_PRESETS.map((preset) => (
-                      <button
-                        key={preset.id}
-                        type="button"
-                        onClick={() => setSelectedAvatarUrl(preset.url)}
-                        className={`relative flex-shrink-0 w-12 h-12 rounded-2xl overflow-hidden border-2 transition-all ${
-                          selectedAvatarUrl === preset.url
-                            ? 'border-red-500 scale-105 shadow-md shadow-red-500/40 ring-2 ring-red-500/30'
-                            : 'border-neutral-800 opacity-60 hover:opacity-100 hover:border-neutral-600'
-                        }`}
-                        title={preset.name}
-                      >
-                        <img src={preset.url} alt={preset.name} className="w-full h-full object-cover" />
-                        {selectedAvatarUrl === preset.url && (
-                          <div className="absolute inset-0 bg-red-600/30 flex items-center justify-center">
-                            <Check className="w-3.5 h-3.5 text-white stroke-[3]" />
-                          </div>
-                        )}
-                      </button>
-                    ))}
                   </div>
                 </div>
               )}

@@ -390,6 +390,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
                   src={currentUser?.avatar || AVATAR_PRESETS[0].url} 
                   alt={currentUser?.name || 'User'} 
                   className="w-full h-full object-cover"
+                  referrerPolicy="no-referrer"
                 />
               </div>
               {isLoggedIn && (
@@ -566,7 +567,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
                         : 'border-neutral-800 opacity-60 hover:opacity-100'
                     }`}
                   >
-                    <img src={preset.url} alt={preset.name} className="w-full h-full object-cover" />
+                    <img src={preset.url} alt={preset.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                     {selectedAvatar === preset.url && (
                       <div className="absolute inset-0 bg-red-600/30 flex items-center justify-center">
                         <Check className="w-4 h-4 text-white stroke-[3]" />
@@ -1053,7 +1054,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
                   <label className="block text-xs font-bold text-neutral-300 uppercase tracking-wider mb-3">
                     Choose Your Avatar
                   </label>
-                  <div className="grid grid-cols-4 sm:grid-cols-8 gap-3">
+                  <div className="grid grid-cols-3 sm:grid-cols-6 gap-3">
                     {AVATAR_PRESETS.map((preset) => (
                       <button
                         key={preset.id}
@@ -1069,7 +1070,8 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
                         <img 
                           src={preset.url} 
                           alt={preset.name} 
-                          className="w-full h-full object-cover group-hover:scale-110 transition-transform" 
+                          className="w-full h-full object-cover group-hover:scale-110 transition-transform"
+                          referrerPolicy="no-referrer"
                         />
                         {selectedAvatar === preset.url && (
                           <div className="absolute inset-0 bg-red-600/30 flex items-center justify-center">

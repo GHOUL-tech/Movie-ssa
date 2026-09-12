@@ -6,81 +6,40 @@ export interface AvatarPreset {
 
 export const AVATAR_PRESETS: AvatarPreset[] = [
   {
-    id: 'cinema-director',
-    name: 'Film Director',
-    url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+    id: 'profile-photo-1',
+    name: 'Profile 1',
+    url: 'https://i.pinimg.com/736x/93/54/21/9354219edd52122d9211235db494e710.jpg',
   },
   {
-    id: 'cyber-neon',
-    name: 'Cyberpunk Streamer',
-    url: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80',
+    id: 'profile-photo-2',
+    name: 'Profile 2',
+    url: 'https://i.pinimg.com/736x/a5/22/c1/a522c1fdedad50f412ff96ef21a74d9b.jpg',
   },
   {
-    id: 'cinephile-gold',
-    name: 'Cinephile Gold',
-    url: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop&q=80',
+    id: 'profile-photo-3',
+    name: 'Profile 3',
+    url: 'https://i.pinimg.com/736x/cc/23/ca/cc23ca44b25e21771d01316257f08d3b.jpg',
   },
   {
-    id: 'retro-synth',
-    name: 'Sci-Fi Explorer',
-    url: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop&q=80',
+    id: 'profile-photo-4',
+    name: 'Profile 4',
+    url: 'https://i.pinimg.com/736x/15/04/f6/1504f6fdaa3545db7568306470bda4d0.jpg',
   },
   {
-    id: 'popcorn-buff',
-    name: 'Popcorn Buff',
-    url: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=150&auto=format&fit=crop&q=80',
+    id: 'profile-photo-5',
+    name: 'Profile 5',
+    url: 'https://i.pinimg.com/736x/ab/27/26/ab2726710985e3951a66cd7b00f9c653.jpg',
   },
   {
-    id: 'action-hero',
-    name: 'Action Maverick',
-    url: 'https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?w=150&auto=format&fit=crop&q=80',
-  },
-  {
-    id: 'anime-rebel',
-    name: 'Anime Fanatic',
-    url: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150&auto=format&fit=crop&q=80',
-  },
-  {
-    id: 'noir-detective',
-    name: 'Noir Critic',
-    url: 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=150&auto=format&fit=crop&q=80',
+    id: 'profile-photo-6',
+    name: 'Profile 6',
+    url: 'https://i.pinimg.com/736x/48/43/d6/4843d69eafd9c353027534a67181ad27.jpg',
   },
 ];
 
-export const ANIME_AVATARS: AvatarPreset[] = [
-  {
-    id: 'anime-luffy',
-    name: 'Pirate Captain',
-    url: 'https://images.unsplash.com/photo-1578632767115-351597cf2477?w=150&auto=format&fit=crop&q=80',
-  },
-  {
-    id: 'anime-naruto',
-    name: 'Shadow Shinobi',
-    url: 'https://images.unsplash.com/photo-1563089145-599997674d42?w=150&auto=format&fit=crop&q=80',
-  },
-  {
-    id: 'anime-gojo',
-    name: 'Infinity Sorcerer',
-    url: 'https://images.unsplash.com/photo-1607604276583-eef5d076aa5f?w=150&auto=format&fit=crop&q=80',
-  },
-  {
-    id: 'anime-tanjiro',
-    name: 'Demon Slayer',
-    url: 'https://images.unsplash.com/photo-1618336753974-aae8e04506aa?w=150&auto=format&fit=crop&q=80',
-  },
-  {
-    id: 'anime-cyber',
-    name: 'Mecha Cyber',
-    url: 'https://images.unsplash.com/photo-1579783900882-c0d3dad7b119?w=150&auto=format&fit=crop&q=80',
-  },
-  {
-    id: 'anime-samurai',
-    name: 'Neon Ronin',
-    url: 'https://images.unsplash.com/photo-1614036417651-efe5912149d8?w=150&auto=format&fit=crop&q=80',
-  },
-];
+export const ANIME_AVATARS: AvatarPreset[] = AVATAR_PRESETS;
 
-export const ALL_AVATARS: AvatarPreset[] = [...AVATAR_PRESETS, ...ANIME_AVATARS];
+export const ALL_AVATARS: AvatarPreset[] = AVATAR_PRESETS;
 
 export const DEFAULT_AVATAR = AVATAR_PRESETS[0].url;
 

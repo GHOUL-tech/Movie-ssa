@@ -314,6 +314,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenFilter }) => {
                       src={currentUser.avatar} 
                       alt={currentUser.name} 
                       className="w-full h-full object-cover" 
+                      referrerPolicy="no-referrer"
                     />
                   </div>
                   <span className="hidden md:inline text-xs font-bold text-neutral-200 max-w-[90px] truncate">
@@ -329,7 +330,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenFilter }) => {
                     {/* User Header */}
                     <div className="p-3 border-b border-neutral-800 flex items-center gap-3">
                       <div className="w-10 h-10 rounded-xl overflow-hidden border border-red-500/40 flex-shrink-0">
-                        <img src={currentUser.avatar} alt={currentUser.name} className="w-full h-full object-cover" />
+                        <img src={currentUser.avatar} alt={currentUser.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                       </div>
                       <div className="min-w-0">
                         <div className="text-xs font-bold text-white truncate">{currentUser.name}</div>
