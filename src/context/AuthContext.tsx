@@ -130,7 +130,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (!activeId) return;
 
     const unsubscribe = subscribeToUserDoc(activeId, (remoteUser) => {
-      if (!remoteUser) return;
+      if (!remoteUser) {
+        // User was deleted from the backend
+        logoutUser();
+        setCurrentUserState(null);
+        refreshUserData();
+        return;
+      }
       setIsFirebaseSynced(true);
 
       // Sync to local state safely without triggering a write-back loop to Firestore

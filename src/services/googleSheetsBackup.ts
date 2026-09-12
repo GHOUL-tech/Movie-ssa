@@ -32,7 +32,16 @@ export interface GoogleSheetsRestoreData {
   supportMessages?: SupportMessage[];
 }
 
-const DEFAULT_GOOGLE_APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzOcerndIfkHKkscjWKIZFU-wm6ea01fhTS_a7p7UrNXkhYA0Y0BRCgHEmo81d9UJ7h/exec';
+const DEFAULT_GOOGLE_APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzh3EDkYvHeRysiMPD8i1ug_sJiJeR51Pw_wPa4guP89FDqXK-4ElPzEbdy1GKhm02-/exec';
+
+const OUTDATED_URL_KEYS = [
+  'AKfycbwROExizYYExM0ZfiyQvPKH2wRleazEc68zv_FUtQYHuP6bqUPImi5sD0WYokBdPat6',
+  'AKfycbzOcerndIfkHKkscjWKIZFU-wm6ea01fhTS_a7p7UrNXkhYA0Y0BRCgHEmo81d9UJ7h',
+  'AKfycbxT7hlri7NWPEHbsrCliUirnfywRX91iWmz9RdtrnfBd6owESLd8NvrMbwkNIV217hL',
+  'AKfycbwLBPbYLGqNS9ad7mGrZV7uwOODGWAT8_NyYU4cduZsvvIL9xdQ4269PWe85hC26FVT',
+  'AKfycbzrsRrAySwbWerj7qPqkzbI_FGug-4kJ0arzpEY4jD4KJvEUefznxfgI7LeenktCEp-',
+  'AKfycbzISCRsDG1AX481duq2wm63un4ctDWJq3xbKKDYu84bgefUlsUeB55bdF3BQPgZCN82'
+];
 
 /**
  * Returns the currently active Google Apps Script Web App URL
@@ -41,10 +50,17 @@ export function getGoogleSheetsScriptUrl(): string {
   try {
     const settings = getSystemSettings();
     if (settings.googleSheetsScriptUrl?.trim()) {
-      return settings.googleSheetsScriptUrl.trim();
+      const url = settings.googleSheetsScriptUrl.trim();
+      if (!OUTDATED_URL_KEYS.some(k => url.includes(k))) {
+        return url;
+      }
     }
   } catch {}
-  return localStorage.getItem(GOOGLE_SHEETS_SCRIPT_KEY) || DEFAULT_GOOGLE_APPS_SCRIPT_URL;
+  const rawLocal = localStorage.getItem(GOOGLE_SHEETS_SCRIPT_KEY);
+  if (rawLocal && !OUTDATED_URL_KEYS.some(k => rawLocal.includes(k))) {
+    return rawLocal.trim();
+  }
+  return DEFAULT_GOOGLE_APPS_SCRIPT_URL;
 }
 
 /**
@@ -238,6 +254,17 @@ export async function pushBackupToGoogleSheets(
         watchLaterCount: u.watchLater?.length || 0
       })),
       subscriptionCodes: codes.map(c => ({
+        id: c.id,
+        code: c.code,
+        tier: c.tier,
+        durationDays: c.durationDays,
+        isRedeemed: c.isRedeemed ? 'Redeemed' : 'Active (Available)',
+        redeemedBy: c.redeemedBy ? `${c.redeemedBy.userName} (${c.redeemedBy.userEmail})` : '',
+        redeemedAt: c.redeemedAt ? new Date(c.redeemedAt).toISOString() : '',
+        createdAt: new Date(c.createdAt).toISOString(),
+        note: c.note || ''
+      })),
+      codes: codes.map(c => ({
         id: c.id,
         code: c.code,
         tier: c.tier,
@@ -597,13 +624,14 @@ function handleRequest(e, method) {
         }
       }
 
-      if (data.subscriptionCodes && Array.isArray(data.subscriptionCodes)) {
+      var codesArr = data.subscriptionCodes || data.codes;
+      if (codesArr && Array.isArray(codesArr)) {
         var codesSheet = getOrCreateSheet(ss, 'Subscription_Codes', [
           'Code ID', 'Passcode Key', 'Tier', 'Duration (Days)', 
           'Status', 'Redeemed By', 'Redeemed Date', 'Created Date', 'Notes', 'Last Synced'
         ], '#831843');
 
-        var codeRows = data.subscriptionCodes.map(function(c) {
+        var codeRows = codesArr.map(function(c) {
           return [
             c.id || '',
             c.code || '',
@@ -768,10 +796,22 @@ function handleRequest(e, method) {
     else if (action === 'upsertSupportMessage' && params.message) {
       var m = params.message;
       var supSheet = getOrCreateSheet(ss, 'Support_Tickets', [
-        'Message ID', 'User ID', 'User Name', 'Email', 'Sender', 'Message Text', 'Read Status', 'Created Date'
+        'Message ID', 'User ID', 'User Name', 'Email', 'Sender', 'Message Text', 'Read Status', 'Created Date', 'Last Synced'
       ], '#312e81');
 
-      supSheet.appendRow([
+      var foundMsgRow = -1;
+      var lastMsgRow = supSheet.getLastRow();
+      if (lastMsgRow > 1) {
+        var msgIds = supSheet.getRange(2, 1, lastMsgRow - 1, 1).getValues();
+        for (var mi = 0; mi < msgIds.length; mi++) {
+          if (msgIds[mi][0] === (m.id || '')) {
+            foundMsgRow = mi + 2;
+            break;
+          }
+        }
+      }
+
+      var msgRowData = [
         m.id || ('msg_' + Date.now()),
         m.userId || '',
         m.userName || '',
@@ -779,9 +819,17 @@ function handleRequest(e, method) {
         m.sender || 'user',
         m.message || '',
         m.read || 'No',
-        m.createdAt || new Date().toISOString()
-      ]);
+        m.createdAt || new Date().toISOString(),
+        new Date().toISOString()
+      ];
 
+      if (foundMsgRow > 1) {
+        supSheet.getRange(foundMsgRow, 1, 1, msgRowData.length).setValues([msgRowData]);
+      } else {
+        supSheet.appendRow(msgRowData);
+      }
+
+      logBackupActivity(ss, 'Support Message Sync', 'Message from ' + (m.sender || 'user') + ': ' + (m.userName || m.userId));
       output = { success: true, message: 'Support message logged to Google Sheets in realtime' };
     }
     // 6. REAL-TIME SETTINGS UPSERT
@@ -930,6 +978,23 @@ function handleRequest(e, method) {
         }
       }
       output = { success: true, message: 'Thread deleted' };
+    }
+    else if (action === 'deleteAllSubscriptionCodes') {
+      var csSheetAll = ss.getSheetByName('Subscription_Codes');
+      if (csSheetAll && csSheetAll.getLastRow() > 1) {
+        csSheetAll.getRange(2, 1, csSheetAll.getLastRow() - 1, csSheetAll.getLastColumn()).clearContent();
+      }
+      output = { success: true, message: 'All codes deleted' };
+    }
+    else if (action === 'wipeAll') {
+      var sheetNames = ['Users', 'Subscription_Codes', 'Support_Tickets'];
+      for (var i = 0; i < sheetNames.length; i++) {
+        var sht = ss.getSheetByName(sheetNames[i]);
+        if (sht && sht.getLastRow() > 1) {
+          sht.getRange(2, 1, sht.getLastRow() - 1, sht.getLastColumn()).clearContent();
+        }
+      }
+      output = { success: true, message: 'All database records wiped successfully' };
     }
 
   } catch (err) {

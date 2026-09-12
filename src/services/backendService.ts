@@ -33,11 +33,37 @@ export async function testBackendConnection(): Promise<BackendStatusResult> {
   };
 }
 
+export async function wipeAllDataFromBackend(): Promise<boolean> {
+  lastLocalUpdateAt = Date.now();
+  const { getGoogleSheetsScriptUrl } = await import('./googleSheetsBackup');
+  const url = getGoogleSheetsScriptUrl();
+  if (url) {
+    try {
+      await fetch(url, {
+        method: 'POST',
+        redirect: 'follow',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ action: 'wipeAll' })
+      });
+    } catch (e) {
+      console.warn('Failed to wipe backend:', e);
+    }
+  }
+  return true;
+}
+
 // ==========================================
 // 1. USER PROFILE & AUTHENTICATION
 // ==========================================
 
+let lastLocalUpdateAt = 0;
+
+export function setLastLocalUpdateAt() {
+  lastLocalUpdateAt = Date.now();
+}
+
 export async function saveUserToBackend(user: User): Promise<boolean> {
+  lastLocalUpdateAt = Date.now();
   dispatchUserToGoogleSheets(user);
   return true;
 }
@@ -51,6 +77,7 @@ export async function getAllUsersFromBackend(): Promise<User[]> {
 }
 
 export async function deleteUserFromBackend(userId: string): Promise<boolean> {
+  lastLocalUpdateAt = Date.now();
   const { getGoogleSheetsScriptUrl } = await import('./googleSheetsBackup');
   const url = getGoogleSheetsScriptUrl();
   if (url) {
@@ -94,6 +121,7 @@ export async function getSystemSettingsFromBackend(): Promise<SystemSettings> {
 }
 
 export async function saveSystemSettingsToBackend(settings: Partial<SystemSettings>): Promise<boolean> {
+  lastLocalUpdateAt = Date.now();
   dispatchSettingsToGoogleSheets(settings);
   return true;
 }
@@ -114,11 +142,13 @@ export async function getAllSubscriptionCodesFromBackend(): Promise<Subscription
 }
 
 export async function saveSubscriptionCodeToBackend(code: SubscriptionCode): Promise<boolean> {
+  lastLocalUpdateAt = Date.now();
   dispatchSubscriptionCodeToGoogleSheets(code);
   return true;
 }
 
 export async function deleteSubscriptionCodeFromBackend(codeId: string): Promise<boolean> {
+  lastLocalUpdateAt = Date.now();
   const { getGoogleSheetsScriptUrl } = await import('./googleSheetsBackup');
   const url = getGoogleSheetsScriptUrl();
   if (url) {
@@ -128,6 +158,25 @@ export async function deleteSubscriptionCodeFromBackend(codeId: string): Promise
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
       body: JSON.stringify({ action: 'deleteSubscriptionCode', codeId })
     }).catch(console.warn);
+  }
+  return true;
+}
+
+export async function deleteAllSubscriptionCodesFromBackend(): Promise<boolean> {
+  lastLocalUpdateAt = Date.now();
+  const { getGoogleSheetsScriptUrl } = await import('./googleSheetsBackup');
+  const url = getGoogleSheetsScriptUrl();
+  if (url) {
+    try {
+      await fetch(url, {
+        method: 'POST',
+        redirect: 'follow',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ action: 'deleteAllSubscriptionCodes' })
+      });
+    } catch (e) {
+      console.warn('Failed to delete all subscription codes:', e);
+    }
   }
   return true;
 }
@@ -159,11 +208,13 @@ let subscriptionCodeCallbacks: Array<(codes: SubscriptionCode[]) => void> = [];
 
 async function pollGoogleSheets() {
   if (isPolling) return;
+  // Prevent overwriting local changes immediately (wait 8 seconds for sheets to process)
+  if (Date.now() - lastLocalUpdateAt < 8000) return;
   isPolling = true;
 
   try {
     const { fetchBackupFromGoogleSheets } = await import('./googleSheetsBackup');
-    const { saveUsersLocally } = await import('../utils/storage');
+    const { saveUsersLocally, getAllUsers } = await import('../utils/storage');
     const res = await fetchBackupFromGoogleSheets();
     
     if (res.success && res.data) {
@@ -171,10 +222,28 @@ async function pollGoogleSheets() {
       
       // 1. Sync Users
       if (data.users) {
-        saveUsersLocally(data.users);
-        allUsersCallbacks.forEach(cb => cb(data.users!));
+        const localUsers = getAllUsers();
+        const mergedUsers = data.users.map(remoteUser => {
+          const localUser = localUsers.find(u => u.id === remoteUser.id);
+          if (localUser) {
+            return {
+              ...remoteUser,
+              watchLater: localUser.watchLater || [],
+              watchHistory: localUser.watchHistory || []
+            };
+          }
+          return remoteUser;
+        });
+
+        // Also if a local user is NOT in remote, they are deleted
+        // So we just save mergedUsers
+        saveUsersLocally(mergedUsers);
+        
+        // If the current user was deleted, we should log them out? 
+        // We'll just emit the updated users. The UI will see them as null if they were deleted.
+        allUsersCallbacks.forEach(cb => cb(mergedUsers));
         userDocCallbacks.forEach(sub => {
-          const u = data.users!.find(u => u.id === sub.userId) || null;
+          const u = mergedUsers.find(u => u.id === sub.userId) || null;
           sub.cb(u);
         });
       }
@@ -203,6 +272,8 @@ async function pollGoogleSheets() {
           sub.cb(userMsgs);
         });
       }
+    } else {
+      console.warn('Real-time poll failed:', res.message, res.error);
     }
   } catch (err) {
     console.error('Failed to poll Google Sheets:', err);
@@ -211,12 +282,13 @@ async function pollGoogleSheets() {
   }
 }
 
-// Start polling every 10 seconds
-setInterval(pollGoogleSheets, 10000);
+// Start polling every 12 seconds
+setInterval(pollGoogleSheets, 12000);
 // Initial fetch
-setTimeout(pollGoogleSheets, 1000);
+setTimeout(pollGoogleSheets, 500);
 
 export async function sendSupportMessageToBackend(msg: Omit<SupportMessage, 'id' | 'createdAt' | 'read'> & Partial<Pick<SupportMessage, 'id' | 'createdAt' | 'read'>>): Promise<boolean> {
+  lastLocalUpdateAt = Date.now();
   const finalMsg: SupportMessage = {
     id: msg.id || `msg_${Date.now()}`,
     userId: msg.userId,

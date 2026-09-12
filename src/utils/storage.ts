@@ -42,6 +42,16 @@ function getInitialUsers(): User[] {
   return [];
 }
 
+export function clearAllLocalData(): void {
+  localStorage.removeItem(USERS_KEY);
+  localStorage.removeItem(CURRENT_USER_ID_KEY);
+  localStorage.removeItem(SUBSCRIPTION_CODES_KEY);
+  localStorage.removeItem(GUEST_HISTORY_KEY);
+  localStorage.removeItem(CONTINUE_WATCHING_KEY);
+  localStorage.removeItem(WATCHLIST_KEY);
+  localStorage.removeItem(PENDING_USERS_KEY);
+}
+
 export function getAllUsers(): User[] {
   return getInitialUsers();
 }
@@ -833,15 +843,26 @@ export function setPreferredServer(serverId: string): void {
 // System Settings (Subscription Required Toggle & Shop URL)
 // -------------------------------------------------------------
 
-const DEFAULT_GOOGLE_APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwROExizYYExM0ZfiyQvPKH2wRleazEc68zv_FUtQYHuP6bqUPImi5sD0WYokBdPat6/exec';
+const DEFAULT_GOOGLE_APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzh3EDkYvHeRysiMPD8i1ug_sJiJeR51Pw_wPa4guP89FDqXK-4ElPzEbdy1GKhm02-/exec';
+
+const OUTDATED_URL_KEYS = [
+  'AKfycbwROExizYYExM0ZfiyQvPKH2wRleazEc68zv_FUtQYHuP6bqUPImi5sD0WYokBdPat6',
+  'AKfycbzOcerndIfkHKkscjWKIZFU-wm6ea01fhTS_a7p7UrNXkhYA0Y0BRCgHEmo81d9UJ7h',
+  'AKfycbxT7hlri7NWPEHbsrCliUirnfywRX91iWmz9RdtrnfBd6owESLd8NvrMbwkNIV217hL',
+  'AKfycbwLBPbYLGqNS9ad7mGrZV7uwOODGWAT8_NyYU4cduZsvvIL9xdQ4269PWe85hC26FVT',
+  'AKfycbzrsRrAySwbWerj7qPqkzbI_FGug-4kJ0arzpEY4jD4KJvEUefznxfgI7LeenktCEp-',
+  'AKfycbzISCRsDG1AX481duq2wm63un4ctDWJq3xbKKDYu84bgefUlsUeB55bdF3BQPgZCN82'
+];
 
 export function getSystemSettings(): SystemSettings {
   try {
     const raw = localStorage.getItem(SYSTEM_SETTINGS_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (!parsed.googleSheetsScriptUrl) {
+      const isOutdated = OUTDATED_URL_KEYS.some(k => parsed.googleSheetsScriptUrl?.includes(k));
+      if (!parsed.googleSheetsScriptUrl || isOutdated) {
         parsed.googleSheetsScriptUrl = DEFAULT_GOOGLE_APPS_SCRIPT_URL;
+        localStorage.setItem(SYSTEM_SETTINGS_KEY, JSON.stringify(parsed));
       }
       return parsed;
     }
@@ -912,19 +933,15 @@ export function getSubscriptionCodes(): SubscriptionCode[] {
     const raw = localStorage.getItem(SUBSCRIPTION_CODES_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) {
+      if (Array.isArray(parsed)) {
         return parsed;
       }
     }
   } catch (e) {
     console.error('Failed to parse subscription codes:', e);
   }
-  // If no codes exist in storage, initialize with the 3 Master VIP codes
-  saveSubscriptionCodes(DEFAULT_MASTER_SUBSCRIPTION_CODES);
-  DEFAULT_MASTER_SUBSCRIPTION_CODES.forEach(code => {
-    saveSubscriptionCodeToBackend(code).catch(() => {});
-  });
-  return DEFAULT_MASTER_SUBSCRIPTION_CODES;
+  // Return empty array instead of seeding defaults, so wipe commands actually stay wiped.
+  return [];
 }
 
 export function restoreMasterSubscriptionCodes(): SubscriptionCode[] {
@@ -974,7 +991,13 @@ export function createSubscriptionCode(
   const codes = getSubscriptionCodes();
   codes.unshift(newCode);
   saveSubscriptionCodes(codes);
-  saveSubscriptionCodeToBackend(newCode).catch(e => console.error('Backend save code error:', e));
+  
+  import('../services/googleSheetsBackup').then(m => {
+    import('../services/backendService').then(b => {
+      b.setLastLocalUpdateAt();
+      m.dispatchSubscriptionCodeToGoogleSheets(newCode);
+    });
+  });
 
   return newCode;
 }
@@ -1005,10 +1028,19 @@ export function createBatchSubscriptionCodes(
     };
     created.push(newCode);
     existingCodes.unshift(newCode);
-    saveSubscriptionCodeToBackend(newCode).catch(e => console.error('Backend save code error:', e));
   }
 
   saveSubscriptionCodes(existingCodes);
+  
+  // Use a full backup sync for batches to avoid Google Apps Script concurrent write drops
+  import('../services/googleSheetsBackup').then(m => {
+    import('../services/backendService').then(b => {
+      // Set update flag to prevent race condition overwrite
+      b.setLastLocalUpdateAt();
+      m.pushBackupToGoogleSheets(undefined, { codes: existingCodes }).catch(console.error);
+    });
+  });
+
   return created;
 }
 

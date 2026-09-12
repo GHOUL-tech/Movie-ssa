@@ -70,11 +70,13 @@ import {
   subscribeToAllUsers,
   saveSubscriptionCodeToBackend,
   deleteSubscriptionCodeFromBackend,
+  deleteAllSubscriptionCodesFromBackend,
   saveUserToBackend,
   testBackendConnection,
   saveSystemSettingsToBackend,
   markSupportThreadAsRead,
-  deleteSupportThreadFromBackend
+  deleteSupportThreadFromBackend,
+  wipeAllDataFromBackend
 } from '../services/backendService';
 import { 
   getGoogleSheetsScriptUrl, 
@@ -102,7 +104,9 @@ import {
   checkUserHasActiveSubscription,
   getPendingUserSyncs,
   syncPendingUsersToFirebase,
-  restoreMasterSubscriptionCodes
+  restoreMasterSubscriptionCodes,
+  clearAllLocalData,
+  saveSubscriptionCodes
 } from '../utils/storage';
 import { 
   getEmailJsConfig, 
@@ -323,6 +327,19 @@ export const AdminPanel: React.FC = () => {
     }
   };
 
+  const handleDeleteAllSubscriptionCodes = async () => {
+    if (!window.confirm('Are you sure you want to delete ALL subscription codes? This will remove them from the website and Google Sheets instantly.')) {
+      return;
+    }
+    try {
+      await deleteAllSubscriptionCodesFromBackend();
+      saveSubscriptionCodes([]);
+      setSubscriptionCodes([]);
+    } catch (e: any) {
+      alert('Failed to delete codes: ' + e?.message);
+    }
+  };
+
   // Google Sheets Backup Action Handlers
   const handleSaveGoogleSheetsConfig = async () => {
     setIsSavingSheetsSettings(true);
@@ -418,6 +435,24 @@ export const AdminPanel: React.FC = () => {
     navigator.clipboard.writeText(GOOGLE_APPS_SCRIPT_CODE);
     setCopiedAppsScript(true);
     setTimeout(() => setCopiedAppsScript(false), 3000);
+  };
+
+  const handleWipeAllData = async () => {
+    if (!window.confirm('WARNING: THIS WILL DELETE ALL DATA FROM THE WEBSITE AND GOOGLE SHEETS! Are you absolutely sure?')) {
+      return;
+    }
+    if (!window.confirm('FINAL WARNING: This cannot be undone. Wipe all data?')) {
+      return;
+    }
+    
+    // Wipe remote first so any slow pulls don't recreate local
+    await wipeAllDataFromBackend();
+    
+    // Wipe local
+    clearAllLocalData();
+    
+    alert('All data has been wiped from the server and local storage. Refreshing the page.');
+    window.location.reload();
   };
 
   const handleSaveEmailConfig = (e: React.FormEvent) => {
@@ -2019,6 +2054,17 @@ export const AdminPanel: React.FC = () => {
                     <Crown className="w-3.5 h-3.5 text-amber-400" />
                     <span>{restoringCodes ? 'Restoring...' : 'Restore 3 Master VIP Codes'}</span>
                   </button>
+
+                  {/* Delete All Codes */}
+                  <button
+                    type="button"
+                    onClick={handleDeleteAllSubscriptionCodes}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-red-950/40 hover:bg-red-900/50 text-xs font-semibold text-red-400 border border-red-500/30 transition-all cursor-pointer"
+                    title="Delete All Subscription Codes"
+                  >
+                    <Trash2 className="w-3.5 h-3.5 text-red-400" />
+                    <span>Delete All Codes</span>
+                  </button>
                 </div>
               </div>
 
@@ -2852,6 +2898,22 @@ export const AdminPanel: React.FC = () => {
                         <div className="text-left">
                           <div>Restore Master VIP Passcodes</div>
                           <div className="text-[10px] text-neutral-400 font-normal">Restores default 1-mo, 1-yr & lifetime passcodes</div>
+                        </div>
+                      </div>
+                      <span className="text-xs">→</span>
+                    </button>
+
+                    {/* Wipe All Data */}
+                    <button
+                      type="button"
+                      onClick={handleWipeAllData}
+                      className="w-full p-3 rounded-2xl bg-red-950/30 hover:bg-red-900/40 border border-red-500/50 text-red-400 text-xs font-bold flex items-center justify-between transition-all cursor-pointer mt-4"
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <Trash2 className="w-4 h-4 text-red-500" />
+                        <div className="text-left">
+                          <div className="text-red-400">Factory Reset / Wipe All Data</div>
+                          <div className="text-[10px] text-red-400/70 font-normal">Permanently delete all users, codes, and history</div>
                         </div>
                       </div>
                       <span className="text-xs">→</span>
