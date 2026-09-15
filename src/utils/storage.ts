@@ -23,16 +23,104 @@ const SUBSCRIPTION_CODES_KEY = 'zinovis_subscription_codes_v1';
 const DEFAULT_SHOP_URL = 'https://unikagamingshopnew.vercel.app/';
 
 // Seed demo user if no users exist
+/**
+ * Calculates current age and under-18 status based on elapsed time since joinedAt.
+ * If a user registered at age 17, as years pass (e.g. next year), their age increases to 18,
+ * and isUnder18 automatically transitions to false.
+ */
+export function calculateEffectiveAge(user: User | null | undefined): { age?: number; isUnder18: boolean } {
+  if (!user || user.age === undefined || user.age === null || isNaN(Number(user.age))) {
+    return { age: user?.age, isUnder18: !!user?.isUnder18 };
+  }
+
+  const joinDate = new Date(user.joinedAt || Date.now());
+  const now = new Date();
+
+  // Full calendar years passed since join date
+  let elapsedYears = now.getFullYear() - joinDate.getFullYear();
+  const m = now.getMonth() - joinDate.getMonth();
+  if (m < 0 || (m === 0 && now.getDate() < joinDate.getDate())) {
+    elapsedYears = Math.max(0, elapsedYears - 1);
+  }
+
+  const currentAge = Number(user.age) + Math.max(0, elapsedYears);
+  const isUnder18 = currentAge < 18;
+
+  return { age: currentAge, isUnder18 };
+}
+
+/**
+ * Normalizes user data ensuring:
+ * 1. Current age and under-18 status are calculated dynamically for every year.
+ * 2. Subscription tiers (1 Month, 6 Months, 1 Year) are NEVER marked as permanent/lifetime.
+ */
+export function normalizeUser(user: User): User {
+  if (!user) return user;
+
+  const { age, isUnder18 } = calculateEffectiveAge(user);
+
+  let updatedSub = user.subscription;
+  if (updatedSub) {
+    const rawTier = String(updatedSub.tier || '').toLowerCase().trim();
+    const isPermanentTier = rawTier === 'permanent' || rawTier === 'lifetime';
+
+    if (isPermanentTier) {
+      updatedSub = {
+        ...updatedSub,
+        tier: 'permanent',
+        isPermanent: true,
+        expiresAt: undefined,
+      };
+    } else {
+      // one_month, six_months, one_year
+      let durationDays = 30;
+      let canonicalTier: SubscriptionTier = 'one_month';
+
+      if (rawTier.includes('6m') || rawTier.includes('six')) {
+        durationDays = 180;
+        canonicalTier = 'six_months';
+      } else if (rawTier.includes('1y') || rawTier.includes('year')) {
+        durationDays = 365;
+        canonicalTier = 'one_year';
+      } else {
+        canonicalTier = 'one_month';
+      }
+
+      let expAt = updatedSub.expiresAt;
+      if (!expAt || isNaN(Number(expAt)) || updatedSub.isPermanent) {
+        const start = updatedSub.startDate || user.joinedAt || Date.now();
+        expAt = Number(start) + durationDays * 24 * 60 * 60 * 1000;
+        if (expAt <= Date.now()) {
+          expAt = Date.now() + durationDays * 24 * 60 * 60 * 1000;
+        }
+      }
+
+      updatedSub = {
+        ...updatedSub,
+        tier: canonicalTier,
+        isPermanent: false,
+        expiresAt: expAt,
+      };
+    }
+  }
+
+  return {
+    ...user,
+    age,
+    isUnder18,
+    subscription: updatedSub,
+  };
+}
+
 function getInitialUsers(): User[] {
   try {
     const raw = localStorage.getItem(USERS_KEY);
     if (raw) {
       const parsed = JSON.parse(raw) as User[];
-      // Filter out the legacy demo user if it exists in local storage
-      const filtered = parsed.filter(u => u.id !== 'zinovis_vip');
-      if (filtered.length !== parsed.length) {
-        localStorage.setItem(USERS_KEY, JSON.stringify(filtered));
-      }
+      // Filter out the legacy demo user if it exists in local storage and normalize
+      const filtered = parsed
+        .filter(u => u.id !== 'zinovis_vip')
+        .map(u => normalizeUser(u));
       return filtered;
     }
   } catch (e) {
@@ -172,7 +260,8 @@ export function getCurrentUser(): User | null {
     const currentId = localStorage.getItem(CURRENT_USER_ID_KEY);
     if (!currentId) return null;
     const users = getAllUsers();
-    return users.find(u => u.id === currentId) || null;
+    const found = users.find(u => u.id === currentId);
+    return found ? normalizeUser(found) : null;
   } catch (e) {
     return null;
   }
@@ -181,9 +270,10 @@ export function getCurrentUser(): User | null {
 export function setCurrentUser(user: User | null): void {
   try {
     if (user) {
-      localStorage.setItem(CURRENT_USER_ID_KEY, user.id);
+      const normalized = normalizeUser(user);
+      localStorage.setItem(CURRENT_USER_ID_KEY, normalized.id);
       // Sync user's watchLater with global watchlist key
-      saveWatchlist(user.watchLater || []);
+      saveWatchlist(normalized.watchLater || []);
     } else {
       localStorage.removeItem(CURRENT_USER_ID_KEY);
     }
@@ -1101,18 +1191,40 @@ export function generateRandomCodeString(tier: SubscriptionTier): string {
 export function checkUserHasActiveSubscription(user: User | null | undefined): boolean {
   if (!user || !user.subscription) return false;
   const sub = user.subscription;
-  if (sub.isPermanent || sub.tier === 'permanent') return true;
-  if (!sub.expiresAt) return false;
-  return sub.expiresAt > Date.now();
+  const rawTier = String(sub.tier || '').toLowerCase().trim();
+  const isActuallyPermanent = (sub.isPermanent || rawTier === 'permanent' || rawTier === 'lifetime') && 
+    rawTier !== 'one_month' && rawTier !== 'six_months' && rawTier !== 'one_year';
+  if (isActuallyPermanent) return true;
+
+  let exp = sub.expiresAt;
+  if (!exp || isNaN(Number(exp))) {
+    let days = 30;
+    if (rawTier.includes('6m') || rawTier.includes('six')) days = 180;
+    else if (rawTier.includes('1y') || rawTier.includes('year')) days = 365;
+    exp = (sub.startDate || user.joinedAt || Date.now()) + days * 86400000;
+  }
+  return exp > Date.now();
 }
 
 export function getUserSubscriptionDaysLeft(user: User | null | undefined): number | 'Lifetime' | null {
   if (!user || !user.subscription) return null;
   const sub = user.subscription;
-  if (sub.isPermanent || sub.tier === 'permanent' || !sub.expiresAt) return 'Lifetime';
-  const diff = sub.expiresAt - Date.now();
+  const rawTier = String(sub.tier || '').toLowerCase().trim();
+  const isActuallyPermanent = (sub.isPermanent || rawTier === 'permanent' || rawTier === 'lifetime') && 
+    rawTier !== 'one_month' && rawTier !== 'six_months' && rawTier !== 'one_year';
+  if (isActuallyPermanent) return 'Lifetime';
+
+  let exp = sub.expiresAt;
+  if (!exp || isNaN(Number(exp))) {
+    let days = 30;
+    if (rawTier.includes('6m') || rawTier.includes('six')) days = 180;
+    else if (rawTier.includes('1y') || rawTier.includes('year')) days = 365;
+    exp = (sub.startDate || user.joinedAt || Date.now()) + days * 86400000;
+  }
+
+  const diff = exp - Date.now();
   if (diff <= 0) return 0;
-  return Math.ceil(diff / (1000 * 60 * 60 * 24));
+  return Math.max(1, Math.ceil(diff / (1000 * 60 * 60 * 24)));
 }
 
 export async function redeemSubscriptionCodeInBackend(code: string, user: User): Promise<{ success: boolean; message: string; tier?: SubscriptionTier }> {

@@ -322,7 +322,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
     switch (tier) {
       case 'one_month': return '1 Month Pass';
       case 'permanent': return 'Permanent Lifetime VIP';
-      case 'six_months': return '6 Months Pass';
+      case 'six_months': return '6 Month Pass';
       case 'one_year': return '1 Year Pass';
       default: return tier;
     }
@@ -1502,27 +1502,67 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
                 </span>
               </div>
 
-              {currentUser && checkUserHasActiveSubscription(currentUser) && currentUser.subscription ? (
-                <div className="space-y-2 pt-1">
-                  <div className="flex flex-wrap items-center justify-between gap-2 p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30">
-                    <div>
-                      <div className="text-sm font-black text-white flex items-center gap-1.5">
-                        <Crown className="w-4 h-4 text-amber-400 fill-amber-400" />
-                        <span>{getTierDisplayName(currentUser.subscription.tier)}</span>
-                      </div>
-                      <div className="text-xs text-amber-200/80 mt-0.5">
-                        {currentUser.subscription.isPermanent
-                          ? 'Permanent Lifetime VIP Access — Never expires!'
-                          : `Expires on ${new Date(currentUser.subscription.expiresAt!).toLocaleDateString()} (${getUserSubscriptionDaysLeft(currentUser)} days left)`}
-                      </div>
-                    </div>
+              {currentUser && checkUserHasActiveSubscription(currentUser) && currentUser.subscription ? (() => {
+                const sub = currentUser.subscription;
+                const rawTier = String(sub.tier || '').toLowerCase().trim();
+                const isActuallyPermanent = (sub.isPermanent || rawTier === 'permanent' || rawTier === 'lifetime') && 
+                  rawTier !== 'one_month' && rawTier !== 'six_months' && rawTier !== 'one_year';
+                
+                let expTimestamp = sub.expiresAt;
+                if (!expTimestamp && !isActuallyPermanent) {
+                  let d = 30;
+                  if (rawTier.includes('6m') || rawTier.includes('six')) d = 180;
+                  else if (rawTier.includes('1y') || rawTier.includes('year')) d = 365;
+                  expTimestamp = (sub.startDate || currentUser.joinedAt || Date.now()) + d * 86400000;
+                }
+                
+                const expDateStr = expTimestamp 
+                  ? new Date(expTimestamp).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
+                  : '';
+                const daysLeft = expTimestamp ? Math.max(1, Math.ceil((expTimestamp - Date.now()) / (1000 * 60 * 60 * 24))) : 0;
 
-                    <div className="px-3 py-1 rounded-lg bg-amber-500/20 text-amber-300 font-bold text-xs border border-amber-500/40">
-                      {currentUser.subscription.isPermanent ? 'LIFETIME' : `${getUserSubscriptionDaysLeft(currentUser)} DAYS REMAINING`}
+                let titleText = '1 Month Pass';
+                let subtitleText = '';
+                let badgeText = '1 Month Pass';
+
+                if (isActuallyPermanent) {
+                  titleText = 'Permanent Lifetime VIP';
+                  subtitleText = 'Permanent Lifetime VIP Access — Never expires!';
+                  badgeText = 'LIFETIME';
+                } else if (rawTier.includes('6m') || rawTier.includes('six')) {
+                  titleText = '6 Month Pass';
+                  subtitleText = `6 Month Pass — its expires ${expDateStr} ! (${daysLeft} days left)`;
+                  badgeText = '6 Month Pass';
+                } else if (rawTier.includes('1y') || rawTier.includes('year')) {
+                  titleText = '1 Year Pass';
+                  subtitleText = `1 Year Pass — its expires ${expDateStr} ! (${daysLeft} days left)`;
+                  badgeText = '1 Year Pass';
+                } else {
+                  titleText = '1 Month Pass';
+                  subtitleText = `1 Month Pass — its expires ${expDateStr} ! (${daysLeft} days left)`;
+                  badgeText = '1 Month Pass';
+                }
+
+                return (
+                  <div className="space-y-2 pt-1">
+                    <div className="flex flex-wrap items-center justify-between gap-2 p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30">
+                      <div>
+                        <div className="text-sm font-black text-white flex items-center gap-1.5">
+                          <Crown className="w-4 h-4 text-amber-400 fill-amber-400" />
+                          <span>{titleText}</span>
+                        </div>
+                        <div className="text-xs text-amber-200/90 mt-0.5 font-medium">
+                          {subtitleText}
+                        </div>
+                      </div>
+
+                      <div className="px-3 py-1 rounded-lg bg-amber-500/20 text-amber-300 font-bold text-xs border border-amber-500/40 uppercase tracking-wider">
+                        {badgeText}
+                      </div>
                     </div>
                   </div>
-                </div>
-              ) : (
+                );
+              })() : (
                 <p className="text-xs text-neutral-400 leading-relaxed">
                   {isSubscriptionRequired
                     ? 'Zinovis is currently operating in VIP Subscription mode. You need an active subscription pass code to play HD streams.'

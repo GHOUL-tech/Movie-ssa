@@ -18,7 +18,8 @@ import {
   Heart,
   Headphones,
   ShieldCheck,
-  Settings
+  Settings,
+  Download
 } from 'lucide-react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { MediaItem, MediaType } from '../types';
@@ -113,13 +114,19 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenFilter }) => {
 
   return (
     <>
-      {/* Top Fixed Header */}
+      {/* Top Fixed Header with Clean Device Safe-Area Clearance */}
       <header className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
         scrolled 
-          ? 'bg-neutral-950/95 backdrop-blur-xl border-b border-neutral-800/80 shadow-2xl shadow-black/90 py-2 sm:py-2.5' 
-          : 'bg-gradient-to-b from-neutral-950/95 via-neutral-950/70 to-transparent py-2.5 sm:py-3.5'
+          ? 'bg-neutral-950/98 backdrop-blur-2xl border-b border-neutral-800/80 shadow-2xl shadow-black/95' 
+          : 'bg-gradient-to-b from-neutral-950/98 via-neutral-950/90 to-transparent'
       }`}>
-        <div className="max-w-[2560px] mx-auto px-3 sm:px-6 lg:px-12 2xl:px-24 w-full">
+        {/* Device Status Bar Buffer: Clean solid dark spacer with no text, preventing collisions with device clock, battery & notch */}
+        <div 
+          className="w-full bg-neutral-950/95 sm:hidden select-none pointer-events-none"
+          style={{ height: 'max(env(safe-area-inset-top, 0px), 14px)' }}
+        />
+
+        <div className="max-w-[2560px] mx-auto px-3 sm:px-6 lg:px-12 2xl:px-24 w-full py-2 sm:py-2.5">
           <div className="flex items-center justify-between gap-2 sm:gap-4 w-full">
             
             {/* Brand Logo */}
@@ -180,7 +187,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenFilter }) => {
                   <Search className="w-3.5 h-3.5 sm:w-4 sm:h-4 2xl:w-6 2xl:h-6 text-neutral-400 absolute left-2.5 sm:left-3 2xl:left-4 pointer-events-none" />
                   <input
                     type="text"
-                    placeholder="Search movies, TV..."
+                    placeholder="Search..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     onFocus={() => searchQuery.trim() && setShowDropdown(true)}
@@ -412,6 +419,21 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenFilter }) => {
                         <Settings className="w-3.5 h-3.5 text-neutral-400" />
                         <span>Streaming & Settings</span>
                       </button>
+
+                      <a
+                        href="https://sites.google.com/view/zinovis/site"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={() => setShowProfileMenu(false)}
+                        className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-neutral-300 hover:text-white hover:bg-neutral-800/80 rounded-xl transition-colors cursor-pointer"
+                        title="this app only for android and pc web"
+                      >
+                        <Download className="w-3.5 h-3.5 text-red-400" />
+                        <div className="text-left">
+                          <div className="font-semibold text-white">Download App</div>
+                          <div className="text-[10px] text-neutral-400">this app only for android and pc web</div>
+                        </div>
+                      </a>
                     </div>
 
                     <div className="border-t border-neutral-800 pt-1">
@@ -453,8 +475,8 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenFilter }) => {
       </div>
     </header>
 
-    {/* Mobile Bottom Navigation Dock */}
-    <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-neutral-950/95 backdrop-blur-xl border-t border-neutral-800/80 px-2 py-1.5 flex items-center justify-around shadow-[0_-8px_24px_rgba(0,0,0,0.8)] pb-[calc(0.4rem+env(safe-area-inset-bottom,0px))]">
+    {/* Mobile & Tablet Bottom Navigation Dock */}
+    <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-neutral-950/95 backdrop-blur-2xl border-t border-neutral-800/80 px-2 py-1 flex items-center justify-around shadow-[0_-10px_30px_rgba(0,0,0,0.85)] pb-[max(env(safe-area-inset-bottom,0px),0.5rem)] sm:max-w-xl sm:mx-auto sm:bottom-3 sm:rounded-2xl sm:border sm:border-neutral-800 sm:shadow-2xl sm:pb-1">
       {[
         { id: 'home', path: '/', label: 'Home', icon: Film },
         { id: 'movies', path: '/movies', label: 'Movies', icon: Film },
@@ -468,7 +490,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenFilter }) => {
           <Link
             key={item.id}
             to={item.path}
-            className={`flex flex-col items-center gap-0.5 py-1 px-3 rounded-xl transition-all ${
+            className={`flex flex-col items-center justify-center gap-0.5 py-1 px-3 sm:px-4 min-h-[44px] rounded-xl transition-all ${
               isActive ? 'text-red-500 font-bold scale-105' : 'text-neutral-400 hover:text-neutral-200'
             }`}
           >

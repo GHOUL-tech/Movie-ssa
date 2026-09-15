@@ -1,5 +1,5 @@
 import React from 'react';
-import { Film, ShieldCheck, Sparkles, Monitor, Tv, Heart, Headphones } from 'lucide-react';
+import { Film, ShieldCheck, Sparkles, Monitor, Tv, Heart, Headphones, Download } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 
@@ -106,6 +106,21 @@ export const Footer: React.FC<FooterProps> = ({ onNavigateTab }) => {
                     <Headphones className="w-3 h-3 text-rose-400" />
                     <span>Live Support Chat</span>
                   </button>
+                </li>
+                <li>
+                  <a
+                    href="https://sites.google.com/view/zinovis/site"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="hover:text-white transition-colors flex items-center gap-1.5 text-neutral-300"
+                    title="this app only for android and pc web"
+                  >
+                    <Download className="w-3 h-3 text-red-500" />
+                    <span>Download App</span>
+                  </a>
+                  <p className="text-[10px] text-neutral-500 pl-4.5 pt-0.5">
+                    this app only for android and pc web
+                  </p>
                 </li>
 
               </ul>

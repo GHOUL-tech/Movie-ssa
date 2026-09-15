@@ -65,23 +65,23 @@ export const HeroBanner: React.FC<HeroBannerProps> = ({
   };
 
   return (
-    <div className="relative w-full h-[70vh] sm:h-[80vh] min-h-[460px] sm:min-h-[550px] max-h-[800px] 2xl:max-h-[1200px] bg-neutral-950 overflow-hidden group">
+    <div className="relative w-full h-[70vh] sm:h-[80vh] min-h-[460px] sm:min-h-[550px] max-h-[800px] 2xl:max-h-[1200px] bg-neutral-950 overflow-hidden group touch-pan-y">
       
       {/* Background Backdrop Image */}
-      <div className="absolute inset-0">
+      <div className="absolute inset-0 pointer-events-none select-none">
         <img
           src={getImageUrl(currentItem.backdrop_path, 'backdrop')}
           alt={title}
-          className="w-full h-full object-cover object-top transition-transform duration-1000 scale-105 group-hover:scale-100"
+          className="w-full h-full object-cover object-top transition-transform duration-1000 scale-105 group-hover:scale-100 pointer-events-none"
         />
         {/* Cinematic Vignette Gradients */}
-        <div className="absolute inset-0 bg-gradient-to-t from-neutral-950 via-neutral-950/60 to-transparent" />
-        <div className="absolute inset-0 bg-gradient-to-r from-neutral-950 via-neutral-950/80 to-transparent w-full md:w-3/4" />
-        <div className="absolute inset-0 bg-neutral-950/30 backdrop-blur-[1px]" />
+        <div className="absolute inset-0 bg-gradient-to-t from-neutral-950 via-neutral-950/60 to-transparent pointer-events-none" />
+        <div className="absolute inset-0 bg-gradient-to-r from-neutral-950 via-neutral-950/80 to-transparent w-full md:w-3/4 pointer-events-none" />
+        <div className="absolute inset-0 bg-neutral-950/30 backdrop-blur-[1px] pointer-events-none" />
       </div>
 
       {/* Content Overlay */}
-      <div className="relative max-w-full 2xl:max-w-[2560px] mx-auto h-full px-4 sm:px-6 lg:px-12 2xl:px-24 flex flex-col justify-end pb-10 sm:pb-20 2xl:pb-32 pt-20 sm:pt-28">
+      <div className="relative max-w-full 2xl:max-w-[2560px] mx-auto h-full px-4 sm:px-6 lg:px-12 2xl:px-24 flex flex-col justify-end pb-10 sm:pb-20 2xl:pb-32 pt-20 sm:pt-28 touch-pan-y">
         <div className="max-w-2xl 2xl:max-w-4xl space-y-3 sm:space-y-4 2xl:space-y-6">
           
           {/* Header Badges */}

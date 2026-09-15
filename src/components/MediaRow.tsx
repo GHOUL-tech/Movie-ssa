@@ -36,7 +36,7 @@ export const MediaRow: React.FC<MediaRowProps> = ({
   if (!items || items.length === 0) return null;
 
   return (
-    <section className="relative my-8 sm:my-12 px-4 sm:px-6 lg:px-12 2xl:px-24 max-w-[2560px] mx-auto group/row w-full max-w-full overflow-hidden">
+    <section className="relative my-6 sm:my-12 px-4 sm:px-6 lg:px-12 2xl:px-24 max-w-[2560px] mx-auto group/row w-full max-w-full touch-pan-y">
       
       {/* Section Header */}
       <div className="flex items-end justify-between mb-4">
@@ -71,11 +71,15 @@ export const MediaRow: React.FC<MediaRowProps> = ({
         </div>
       </div>
 
-      {/* Horizontal Scroll Area */}
+      {/* Horizontal Scroll Area with vertical touch-pan-y pass-through */}
       <div
         ref={rowRef}
-        className="flex items-center gap-3 sm:gap-4 overflow-x-auto scrollbar-none py-2 px-1 w-full"
-        style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+        className="flex items-center gap-3 sm:gap-4 overflow-x-auto scrollbar-none py-2 px-1 w-full overscroll-x-contain"
+        style={{ 
+          scrollbarWidth: 'none', 
+          msOverflowStyle: 'none',
+          WebkitOverflowScrolling: 'touch',
+        }}
       >
         {items.map((item) => (
           <MediaCard

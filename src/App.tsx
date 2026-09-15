@@ -175,7 +175,7 @@ function AppContent() {
   const isAdminRoute = location.pathname.startsWith('/admin');
 
   return (
-    <div className="min-h-screen bg-neutral-950 text-white font-sans selection:bg-red-600 selection:text-white flex flex-col relative w-full max-w-full overflow-x-hidden">
+    <div className="min-h-screen bg-neutral-950 text-white font-sans selection:bg-red-600 selection:text-white flex flex-col relative w-full max-w-full overflow-x-clip">
       
       {/* Navbar (hidden on /admin to provide full screen dashboard) */}
       {!isAdminRoute && (
@@ -186,7 +186,7 @@ function AppContent() {
 
       {/* Under 18 Safe Mode Notice Banner */}
       {isUnder18 && !isAdminRoute && (
-        <div className="bg-emerald-950/80 border-b border-emerald-500/30 px-4 py-2 text-xs text-emerald-300 flex items-center justify-center gap-2">
+        <div className="bg-emerald-950/90 border-b border-emerald-500/30 px-4 py-2 text-xs text-emerald-300 flex items-center justify-center gap-2 mt-[calc(4rem+env(safe-area-inset-top,18px))]">
           <ShieldCheck className="w-4 h-4 text-emerald-400 flex-shrink-0" />
           <span>
             <strong>Safe Mode Activated (Age {currentUser?.age || '<18'}):</strong> All 18+ adult titles and mature horror have been filtered down from your streaming feed.
@@ -195,7 +195,7 @@ function AppContent() {
       )}
 
       {/* Main Content */}
-      <main className="flex-1">
+      <main className="flex-1 pb-20 lg:pb-0">
         <Routes>
           {/* Admin Panel Route */}
           <Route path="/admin" element={<AdminPanel />} />
@@ -307,7 +307,7 @@ function AppContent() {
     {!isAdminRoute && (
       <button
         onClick={openSupportModal}
-        className="fixed bottom-5 right-5 z-40 p-3 rounded-2xl bg-gradient-to-tr from-red-600 to-rose-600 text-white shadow-2xl shadow-red-600/40 hover:scale-105 active:scale-95 transition-all flex items-center gap-2 group cursor-pointer border border-red-400/40"
+        className="fixed bottom-20 lg:bottom-5 right-4 lg:right-5 z-40 p-3 rounded-2xl bg-gradient-to-tr from-red-600 to-rose-600 text-white shadow-2xl shadow-red-600/40 hover:scale-105 active:scale-95 transition-all flex items-center gap-2 group cursor-pointer border border-red-400/40"
         title="Live Support Chat"
       >
         <Headphones className="w-5 h-5 text-white" />

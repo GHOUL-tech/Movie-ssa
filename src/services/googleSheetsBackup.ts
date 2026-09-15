@@ -1366,17 +1366,11 @@ function parseUserRow(row, headerMap, idx) {
 
   var tierStr = String(getColVal(row, headerMap, ['subscriptiontier', 'tier', 'plan', 'vip'], 10) || 'Free Tier');
   var expStr = String(getColVal(row, headerMap, ['vipexpiration', 'expiration', 'expiresat'], 11) || 'None');
-  var isPerm = String(getColVal(row, headerMap, ['ispermanentvip', 'permanent', 'ispermanent'], 12)).toLowerCase() === 'yes' || expStr === 'Permanent VIP' || tierStr === 'permanent';
-
-  var subscription = undefined;
-  if (tierStr && tierStr !== 'Free Tier' && tierStr !== 'None') {
-    subscription = {
-      tier: tierStr,
-      startDate: Date.now(),
-      expiresAt: isPerm ? undefined : (expStr && expStr !== 'None' ? new Date(expStr).getTime() : undefined),
-      isPermanent: isPerm
-    };
-  }
+  var rawTierLower = tierStr.toLowerCase().trim();
+  var isPerm = (String(getColVal(row, headerMap, ['ispermanentvip', 'permanent', 'ispermanent'], 12)).toLowerCase() === 'yes' || expStr === 'Permanent VIP' || rawTierLower === 'permanent') &&
+    rawTierLower !== 'one_month' && !rawTierLower.includes('1 month') &&
+    rawTierLower !== 'six_months' && !rawTierLower.includes('6 month') &&
+    rawTierLower !== 'one_year' && !rawTierLower.includes('1 year');
 
   var id = String(getColVal(row, headerMap, ['userid', 'id', 'user_id', 'uuid'], 0) || '').trim();
   var username = String(getColVal(row, headerMap, ['username', 'user', 'handle'], 1) || '').trim();
@@ -1386,10 +1380,58 @@ function parseUserRow(row, headerMap, idx) {
   var avatar = String(getColVal(row, headerMap, ['avatar', 'picture', 'photo', 'image', 'icon'], 5) || '').trim();
   var country = String(getColVal(row, headerMap, ['country', 'location', 'region', 'nation'], 6) || 'Global').trim();
   var rawAge = getColVal(row, headerMap, ['age'], 7);
-  var age = rawAge !== '' && !isNaN(Number(rawAge)) ? Number(rawAge) : undefined;
-  var isUnder18 = String(getColVal(row, headerMap, ['under18', 'minor', 'isunder18'], 8)).toLowerCase() === 'yes';
+  var baseAge = rawAge !== '' && !isNaN(Number(rawAge)) ? Number(rawAge) : undefined;
   var joinedRaw = getColVal(row, headerMap, ['joineddate', 'joinedat', 'createdat', 'date'], 9);
   var joinedAt = joinedRaw ? new Date(joinedRaw).getTime() : Date.now();
+
+  // Auto-increment age every year
+  var age = baseAge;
+  var isUnder18 = String(getColVal(row, headerMap, ['under18', 'minor', 'isunder18'], 8)).toLowerCase() === 'yes';
+  if (baseAge !== undefined) {
+    var joinDate = new Date(joinedAt);
+    var now = new Date();
+    var elapsedYears = now.getFullYear() - joinDate.getFullYear();
+    var m = now.getMonth() - joinDate.getMonth();
+    if (m < 0 || (m === 0 && now.getDate() < joinDate.getDate())) {
+      elapsedYears = Math.max(0, elapsedYears - 1);
+    }
+    age = baseAge + Math.max(0, elapsedYears);
+    isUnder18 = age < 18;
+  }
+
+  var subscription = undefined;
+  if (tierStr && tierStr !== 'Free Tier' && tierStr !== 'None') {
+    var canonicalTier: any = 'one_month';
+    var durationDays = 30;
+    if (isPerm || rawTierLower === 'permanent') {
+      canonicalTier = 'permanent';
+    } else if (rawTierLower.includes('6') || rawTierLower.includes('six')) {
+      canonicalTier = 'six_months';
+      durationDays = 180;
+    } else if (rawTierLower.includes('1y') || rawTierLower.includes('year')) {
+      canonicalTier = 'one_year';
+      durationDays = 365;
+    } else {
+      canonicalTier = 'one_month';
+      durationDays = 30;
+    }
+
+    var expiresAt = undefined;
+    if (!isPerm) {
+      if (expStr && expStr !== 'None' && expStr !== 'Permanent VIP' && !isNaN(new Date(expStr).getTime())) {
+        expiresAt = new Date(expStr).getTime();
+      } else {
+        expiresAt = Date.now() + durationDays * 86400000;
+      }
+    }
+
+    subscription = {
+      tier: canonicalTier,
+      startDate: joinedAt || Date.now(),
+      expiresAt: expiresAt,
+      isPermanent: isPerm
+    };
+  }
 
   // If ID is missing, auto-create a persistent ID so the user is not dropped
   if (!id) {
