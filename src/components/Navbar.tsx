@@ -421,7 +421,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenFilter }) => {
                       </button>
 
                       <a
-                        href="https://sites.google.com/view/zinovis/site"
+                        href="https://zinovisdownloadapk.netlify.app/"
                         target="_blank"
                         rel="noopener noreferrer"
                         onClick={() => setShowProfileMenu(false)}
