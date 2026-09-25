@@ -86,15 +86,15 @@ export const HeroBanner: React.FC<HeroBannerProps> = ({
           
           {/* Header Badges */}
           <div className="flex flex-wrap items-center gap-2 text-xs 2xl:text-base font-semibold">
-            <span className="px-2.5 py-1 rounded-md bg-red-600 text-white font-bold tracking-wider uppercase flex items-center gap-1 shadow-lg shadow-red-600/30">
+            <span className="px-2.5 py-1 rounded-md bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold tracking-wider uppercase flex items-center gap-1 shadow-lg shadow-blue-600/30">
               <Sparkles className="w-3 h-3 fill-current" />
-              Zinovis Spotlight
+              Nuvio Media
             </span>
             <span className="px-2 py-0.5 rounded bg-neutral-900/90 border border-neutral-700 text-neutral-200 font-bold">
               {type === 'movie' ? 'MOVIE' : 'TV SERIES'}
             </span>
             <span className="px-2 py-0.5 rounded bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 font-bold">
-              4K ULTRA HD
+              4K ULTRA HD • 6 MANIFESTS
             </span>
             {currentItem.vote_average > 0 && (
               <span className="flex items-center gap-1 px-2 py-0.5 rounded bg-amber-500/20 border border-amber-500/30 text-amber-300 font-bold">

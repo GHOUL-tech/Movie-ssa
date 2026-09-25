@@ -130,7 +130,7 @@ app.get('/api/nuvio/repositories', async (req, res) => {
       repositories: repos
     });
   } catch (err: any) {
-    console.error('Nuvio repositories fetch error:', err);
+    console.warn('Nuvio repositories fetch error:', err);
     res.status(500).json({ success: false, error: err?.message || 'Failed to list Nuvio repositories' });
   }
 });
@@ -167,7 +167,7 @@ app.get('/api/nuvio/providers', async (req, res) => {
       providers: scrapers
     });
   } catch (err: any) {
-    console.error('Nuvio providers fetch error:', err);
+    console.warn('Nuvio providers fetch error:', err);
     res.status(500).json({ success: false, error: err?.message || 'Failed to list Nuvio providers' });
   }
 });
@@ -211,7 +211,7 @@ app.get('/api/nuvio/streams', async (req, res) => {
       streams: result.streams
     });
   } catch (err: any) {
-    console.error('Nuvio streams fetch error:', err);
+    console.warn('Nuvio streams fetch error:', err);
     res.status(500).json({ success: false, error: err?.message || 'Failed to fetch Nuvio streams' });
   }
 });

@@ -34,8 +34,6 @@ interface NavbarProps {
   onOpenFilter: () => void;
 }
 
-export const SERVERS: Array<{ id: string; name: string; badge: string; description: string }> = [];
-
 export const Navbar: React.FC<NavbarProps> = ({ onOpenFilter }) => {
   const { 
     currentUser, 

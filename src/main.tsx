@@ -4,8 +4,8 @@ import { BrowserRouter } from 'react-router-dom';
 import App from './App.tsx';
 import './index.css';
 
-// Intercept and suppress Firestore quota exhaustion console noise
-const isQuotaExhaustedError = (...args: any[]) => {
+// Intercept and suppress Firestore quota exhaustion & scraper fetch console noise
+const isSuppressedNoise = (...args: any[]) => {
   return args.some(arg => {
     if (!arg) return false;
     const str = typeof arg === 'string' ? arg : (arg?.message || arg?.stack || String(arg) || '');
@@ -13,30 +13,33 @@ const isQuotaExhaustedError = (...args: any[]) => {
       str.includes('resource-exhausted') ||
       str.includes('Quota exceeded') ||
       str.includes('maximum backoff delay') ||
-      str.includes('Quota limit exceeded')
+      str.includes('Quota limit exceeded') ||
+      str.includes('TamilMV') ||
+      str.includes('getStreams failed') ||
+      str.includes('fetch failed')
     );
   });
 };
 
 const originalConsoleError = console.error;
 console.error = (...args: any[]) => {
-  if (isQuotaExhaustedError(...args)) {
-    return; // Gracefully suppressed as app auto-routes to local offline engine
+  if (isSuppressedNoise(...args)) {
+    return; // Gracefully suppressed as app auto-routes to active streaming engine
   }
   originalConsoleError(...args);
 };
 
 const originalConsoleWarn = console.warn;
 console.warn = (...args: any[]) => {
-  if (isQuotaExhaustedError(...args)) {
+  if (isSuppressedNoise(...args)) {
     return; // Gracefully suppressed
   }
   originalConsoleWarn(...args);
 };
 
-// Catch unhandled promise rejections originating from Firestore quota exhaustion
+// Catch unhandled promise rejections originating from Firestore quota exhaustion or scrapers
 window.addEventListener('unhandledrejection', (event) => {
-  if (isQuotaExhaustedError(event.reason)) {
+  if (isSuppressedNoise(event.reason)) {
     event.preventDefault();
   }
 });

@@ -36,7 +36,13 @@ import {
   Tag,
   ExternalLink,
   Gift,
-  Zap
+  Zap,
+  Power,
+  ToggleLeft,
+  ToggleRight,
+  Layers,
+  Compass,
+  RotateCcw
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { MediaType, WatchHistoryItem, WatchlistItem, SubscriptionTier } from '../types';
@@ -51,11 +57,16 @@ import {
   getPreferredServer, 
   setPreferredServer,
   checkUserHasActiveSubscription,
-  getUserSubscriptionDaysLeft
+  getUserSubscriptionDaysLeft,
+  getEnabledRepositories,
+  setRepositoryEnabled,
+  setAllRepositoriesEnabled,
+  resetProviderSettings
 } from '../utils/storage';
 import { getImageUrl } from '../services/tmdb';
 import { AVATAR_PRESETS } from '../utils/avatars';
-import { SERVERS } from './Navbar';
+import { DEFAULT_NUVIO_REPOSITORIES } from '../services/nuvioService';
+import { NuvioProvidersModal } from './NuvioProvidersModal';
 import { useSearchParams } from 'react-router-dom';
 
 interface ProfilePageProps {
@@ -138,6 +149,27 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
 
   // Server preference
   const [preferredServer, setLocalPreferredServer] = useState(getPreferredServer());
+
+  // Repository ON/OFF state (6 Nuvio manifests)
+  const [repoStatus, setRepoStatus] = useState<Record<string, boolean>>(getEnabledRepositories());
+  const [showNuvioModal, setShowNuvioModal] = useState(false);
+
+  const handleToggleRepo = (repoId: string) => {
+    const currentVal = repoStatus[repoId.toLowerCase()] !== false;
+    const nextVal = !currentVal;
+    setRepositoryEnabled(repoId, nextVal);
+    setRepoStatus((prev) => ({ ...prev, [repoId.toLowerCase()]: nextVal }));
+  };
+
+  const handleToggleAllRepos = (enabled: boolean) => {
+    const ids = DEFAULT_NUVIO_REPOSITORIES.map((r) => r.id);
+    setAllRepositoriesEnabled(ids, enabled);
+    const updated: Record<string, boolean> = {};
+    ids.forEach((id) => {
+      updated[id.toLowerCase()] = enabled;
+    });
+    setRepoStatus((prev) => ({ ...prev, ...updated }));
+  };
 
   // In-app clear confirmation modal
   const [clearConfirmModal, setClearConfirmModal] = useState<{ type: 'history' | 'saved'; title: string; message: string } | null>(null);
@@ -521,13 +553,19 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
             </div>
           </div>
 
-          <div className="col-span-2 sm:col-span-1 p-3.5 rounded-2xl bg-neutral-950/60 border border-neutral-800/80 flex flex-col justify-between">
-            <span className="text-xs text-neutral-400 flex items-center gap-1.5 font-medium">
-              <Monitor className="w-3.5 h-3.5 text-emerald-400" />
-              Active HD Server
+          <div 
+            onClick={() => setShowNuvioModal(true)}
+            className="col-span-2 sm:col-span-1 p-3.5 rounded-2xl bg-neutral-950/60 border border-neutral-800/80 hover:border-neutral-700 cursor-pointer flex flex-col justify-between transition-all group"
+          >
+            <span className="text-xs text-neutral-400 flex items-center justify-between font-medium">
+              <span className="flex items-center gap-1.5">
+                <Layers className="w-3.5 h-3.5 text-emerald-400" />
+                Active Nuvio APIs
+              </span>
+              <span className="text-[10px] text-neutral-500 group-hover:text-emerald-400">Manage →</span>
             </span>
             <div className="text-xs sm:text-sm font-bold text-emerald-400 truncate mt-1">
-              {SERVERS.find(s => s.id === preferredServer)?.name.split(':')[1] || 'VidLink Pro'}
+              {DEFAULT_NUVIO_REPOSITORIES.filter(r => repoStatus[r.id.toLowerCase()] !== false).length}/6 Repos ON
             </div>
           </div>
         </div>
@@ -1391,57 +1429,102 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
 
 
           {/* --------------------------------------------------------------------- */}
-          {/* SECTION 4: DEFAULT HD STREAMING SERVER */}
+          {/* SECTION 4: NUVIO STREAMING REPOSITORIES & APIS (6 MANIFESTS) */}
           {/* --------------------------------------------------------------------- */}
           <div className="p-6 sm:p-8 rounded-3xl bg-neutral-900 border border-neutral-800 shadow-xl space-y-6">
-            <div className="flex items-center justify-between pb-4 border-b border-neutral-800">
+            <div className="flex items-center justify-between pb-4 border-b border-neutral-800 flex-wrap gap-3">
               <div className="flex items-center gap-3">
                 <div className="p-2.5 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-500">
-                  <Server className="w-5 h-5" />
+                  <Power className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-lg font-bold text-white">4. Default HD Streaming Server</h3>
+                  <h3 className="text-lg font-bold text-white">4. Nuvio Streaming APIs &amp; Repositories</h3>
                   <p className="text-xs text-neutral-400">
-                    Select which streaming server Zinovis connects to by default when launching video players.
+                    Control which of the 6 provider manifest repositories are active for streaming search and playback.
                   </p>
                 </div>
               </div>
-              <span className="hidden sm:inline-block px-3 py-1 rounded-full bg-red-500/20 text-red-400 text-xs font-bold border border-red-500/30">
-                Active: {SERVERS.find(s => s.id === preferredServer)?.name.split(':')[0] || 'Server 1'}
-              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => handleToggleAllRepos(true)}
+                  className="px-3 py-1.5 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5"
+                >
+                  <Zap className="w-3.5 h-3.5" />
+                  <span>Turn All ON</span>
+                </button>
+                <button
+                  onClick={() => handleToggleAllRepos(false)}
+                  className="px-3 py-1.5 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-neutral-300 text-xs font-bold transition-all cursor-pointer border border-neutral-700"
+                >
+                  <span>Turn All OFF</span>
+                </button>
+                <button
+                  onClick={() => setShowNuvioModal(true)}
+                  className="px-3.5 py-1.5 rounded-xl bg-red-600 hover:bg-red-500 text-white text-xs font-bold transition-all shadow-md shadow-red-600/20 cursor-pointer flex items-center gap-1.5"
+                >
+                  <Compass className="w-3.5 h-3.5" />
+                  <span>Configure Scrapers</span>
+                </button>
+              </div>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {SERVERS.map((s) => {
-                const isSelected = preferredServer === s.id;
+              {DEFAULT_NUVIO_REPOSITORIES.map((repo) => {
+                const isEnabled = repoStatus[repo.id.toLowerCase()] !== false;
                 return (
                   <div
-                    key={s.id}
-                    onClick={() => handleServerSelect(s.id)}
-                    className={`flex items-start justify-between p-4 rounded-2xl border cursor-pointer transition-all ${
-                      isSelected
-                        ? 'bg-red-500/10 border-red-500/50 text-white shadow-lg shadow-red-500/10'
-                        : 'bg-neutral-950 border-neutral-800 text-neutral-300 hover:border-neutral-700 hover:bg-neutral-900/60'
+                    key={repo.id}
+                    className={`flex items-start justify-between p-4 rounded-2xl border transition-all ${
+                      isEnabled
+                        ? 'bg-neutral-950/80 border-neutral-800 text-white'
+                        : 'bg-neutral-950/40 border-neutral-800/40 text-neutral-500 opacity-60'
                     }`}
                   >
-                    <div className="space-y-1">
+                    <div className="space-y-1.5 flex-1 pr-3">
                       <div className="flex items-center gap-2">
-                        <div className={`w-2.5 h-2.5 rounded-full ${isSelected ? 'bg-red-500 animate-pulse' : 'bg-neutral-700'}`} />
-                        <span className="text-sm font-bold text-white">{s.name}</span>
+                        <div className={`w-2.5 h-2.5 rounded-full ${isEnabled ? 'bg-emerald-400 shadow-sm shadow-emerald-400/50' : 'bg-neutral-600'}`} />
+                        <span className="text-sm font-bold text-white">{repo.name}</span>
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-neutral-800 text-neutral-400 font-mono">
+                          {repo.scrapersCount}+ scrapers
+                        </span>
                       </div>
-                      <p className="text-xs text-neutral-400">{s.description}</p>
+                      <p className="text-xs text-neutral-400 leading-relaxed">{repo.description}</p>
+                      <div className="flex items-center gap-2 pt-1 text-[11px] text-neutral-500">
+                        <span>by <strong className="text-neutral-300">{repo.author}</strong></span>
+                        <span>•</span>
+                        <a
+                          href={repo.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="hover:text-red-400 flex items-center gap-1 transition-colors"
+                        >
+                          <span>Manifest</span>
+                          <ExternalLink className="w-2.5 h-2.5" />
+                        </a>
+                      </div>
                     </div>
 
-                    <div className="flex flex-col items-end gap-1.5 flex-shrink-0 ml-3">
-                      <span className="px-2 py-0.5 rounded-md bg-neutral-800 text-red-400 font-bold text-[11px] border border-neutral-700">
-                        {s.badge}
-                      </span>
-                      {isSelected && (
-                        <span className="text-[10px] font-bold text-emerald-400 flex items-center gap-1">
-                          <Check className="w-3 h-3" /> Default
-                        </span>
+                    <button
+                      onClick={() => handleToggleRepo(repo.id)}
+                      className={`p-2 rounded-xl transition-all cursor-pointer flex items-center gap-1.5 text-xs font-bold flex-shrink-0 ${
+                        isEnabled
+                          ? 'bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30 border border-emerald-500/30'
+                          : 'bg-neutral-800/80 text-neutral-400 hover:bg-neutral-700 border border-neutral-700'
+                      }`}
+                      title={isEnabled ? 'Click to Disable API' : 'Click to Enable API'}
+                    >
+                      {isEnabled ? (
+                        <>
+                          <ToggleRight className="w-5 h-5 text-emerald-400" />
+                          <span>ON</span>
+                        </>
+                      ) : (
+                        <>
+                          <ToggleLeft className="w-5 h-5 text-neutral-500" />
+                          <span>OFF</span>
+                        </>
                       )}
-                    </div>
+                    </button>
                   </div>
                 );
               })}
@@ -1450,7 +1533,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
             <div className="p-4 rounded-2xl bg-neutral-950/60 border border-neutral-800/60 flex items-center gap-3 text-xs text-neutral-400">
               <Info className="w-4 h-4 text-neutral-500 flex-shrink-0" />
               <span>
-                Tip: You can also switch streaming servers in real-time inside the media player header if any video stream is buffering.
+                All 6 Nuvio provider APIs are managed locally. Toggling off a repository immediately excludes its scrapers from stream lookups.
               </span>
             </div>
           </div>
@@ -1693,6 +1776,18 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
           </div>
         </div>
       )}
+
+      {/* Nuvio Providers Ecosystem Modal */}
+      <NuvioProvidersModal
+        isOpen={showNuvioModal}
+        onClose={() => {
+          setShowNuvioModal(false);
+          setRepoStatus(getEnabledRepositories());
+        }}
+        onTogglesChanged={() => {
+          setRepoStatus(getEnabledRepositories());
+        }}
+      />
 
     </div>
   );

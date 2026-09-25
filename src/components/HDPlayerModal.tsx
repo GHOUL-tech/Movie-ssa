@@ -56,7 +56,8 @@ import {
   checkUserHasActiveSubscription,
   getEnabledRepositories,
   setRepositoryEnabled,
-  setAllRepositoriesEnabled
+  setAllRepositoriesEnabled,
+  resetProviderSettings
 } from '../utils/storage';
 import { useAuth } from '../context/AuthContext';
 import { Footer } from './Footer';
@@ -232,27 +233,39 @@ export const HDPlayerModal: React.FC<HDPlayerModalProps> = ({
     let isCancelled = false;
     setLoadingStreams(true);
 
-    fetchNuvioStreams(mediaId, mediaType, season, episode, selectedNuvioProvider)
-      .then((streams) => {
+    const loadStreams = async () => {
+      try {
+        let streams = await fetchNuvioStreams(mediaId, mediaType, season, episode, selectedNuvioProvider);
         if (isCancelled) return;
-        setNuvioStreams(streams);
+
+        // If a specific provider returned 0 streams, immediately query all enabled providers
+        if (streams.length === 0 && selectedNuvioProvider !== 'auto') {
+          streams = await fetchNuvioStreams(mediaId, mediaType, season, episode, 'auto');
+          if (isCancelled) return;
+        }
+
         if (streams.length > 0) {
+          setNuvioStreams(streams);
           setSelectedStream(streams[0]);
           setPlayerMode(streams[0].format === 'embed' ? 'embed' : 'direct');
         } else {
+          setNuvioStreams([]);
           setSelectedStream(null);
         }
-      })
-      .catch((err) => {
+      } catch (err) {
         console.warn('Nuvio streams fetch error:', err);
         if (!isCancelled) {
           setNuvioStreams([]);
           setSelectedStream(null);
         }
-      })
-      .finally(() => {
-        if (!isCancelled) setLoadingStreams(false);
-      });
+      } finally {
+        if (!isCancelled) {
+          setLoadingStreams(false);
+        }
+      }
+    };
+
+    loadStreams();
 
     return () => {
       isCancelled = true;
@@ -463,6 +476,34 @@ export const HDPlayerModal: React.FC<HDPlayerModalProps> = ({
             <RefreshCw className={`w-3.5 h-3.5 ${loadingStreams ? 'animate-spin text-red-500' : ''}`} />
           </button>
 
+          {/* Player Mode Switcher: Direct HTML5 Video vs Embed Player */}
+          <div className="flex items-center bg-neutral-900 border border-neutral-800 rounded-xl p-0.5">
+            <button
+              onClick={() => setPlayerMode('direct')}
+              className={`px-2 sm:px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 cursor-pointer ${
+                playerMode === 'direct'
+                  ? 'bg-red-600 text-white shadow-sm'
+                  : 'text-neutral-400 hover:text-white'
+              }`}
+              title="Play via HTML5 direct player"
+            >
+              <Zap className="w-3 h-3" />
+              <span className="hidden md:inline">Direct Video</span>
+            </button>
+            <button
+              onClick={() => setPlayerMode('embed')}
+              className={`px-2 sm:px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 cursor-pointer ${
+                playerMode === 'embed'
+                  ? 'bg-red-600 text-white shadow-sm'
+                  : 'text-neutral-400 hover:text-white'
+              }`}
+              title="Play via cloud embed player"
+            >
+              <Monitor className="w-3 h-3" />
+              <span className="hidden md:inline">Embed Player</span>
+            </button>
+          </div>
+
           {/* Android Streaming Guide */}
           <button
             onClick={() => setShowAndroidGuide(true)}
@@ -628,8 +669,8 @@ export const HDPlayerModal: React.FC<HDPlayerModalProps> = ({
                   <p className="text-xs text-neutral-400">Searching 4K & 1080p direct video streams across enabled repositories</p>
                 </div>
               ) : selectedStream ? (
-                selectedStream.format === 'embed' ? (
-                  /* Embed Stream from Nuvio Scraper */
+                playerMode === 'embed' || selectedStream.format === 'embed' ? (
+                  /* Embed Stream Player */
                   <iframe
                     key={selectedStream.id}
                     src={selectedStream.url}
@@ -653,11 +694,8 @@ export const HDPlayerModal: React.FC<HDPlayerModalProps> = ({
                     controlsList="nodownload"
                     className="w-full h-full object-contain bg-black"
                     onError={() => {
-                      console.warn('Direct stream error on stream:', selectedStream.title);
-                      const currIdx = nuvioStreams.findIndex(s => s.id === selectedStream.id);
-                      if (currIdx >= 0 && currIdx + 1 < nuvioStreams.length) {
-                        setSelectedStream(nuvioStreams[currIdx + 1]);
-                      }
+                      console.log('Direct HTML5 playback error on:', selectedStream.title, 'switching to embed player');
+                      setPlayerMode('embed');
                     }}
                   />
                 )
@@ -683,12 +721,24 @@ export const HDPlayerModal: React.FC<HDPlayerModalProps> = ({
                     <button
                       onClick={() => {
                         setAllRepositoriesEnabled(DEFAULT_NUVIO_REPOSITORIES.map(r => r.id), true);
+                        setSelectedNuvioProvider('auto');
                         setReloadTrigger(prev => prev + 1);
                       }}
                       className="px-5 py-2.5 rounded-xl bg-red-600 hover:bg-red-500 text-white font-bold text-xs transition-all shadow-lg shadow-red-600/30 cursor-pointer flex items-center gap-2"
                     >
                       <Zap className="w-4 h-4 fill-current" />
                       <span>Turn All 6 Repositories ON</span>
+                    </button>
+                    <button
+                      onClick={() => {
+                        resetProviderSettings();
+                        setSelectedNuvioProvider('auto');
+                        setReloadTrigger(prev => prev + 1);
+                      }}
+                      className="px-5 py-2.5 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-neutral-200 font-bold text-xs transition-all cursor-pointer flex items-center gap-2 border border-neutral-700"
+                    >
+                      <RotateCcw className="w-4 h-4" />
+                      <span>Reset Providers to Default</span>
                     </button>
                     <button
                       onClick={() => setShowNuvioModal(true)}
