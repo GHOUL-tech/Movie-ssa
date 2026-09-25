@@ -131,7 +131,7 @@ export async function searchMulti(query: string, page = 1): Promise<MediaItem[]>
 
 export async function getMediaDetail(id: number, type: 'movie' | 'tv'): Promise<MediaDetail> {
   const data = await fetchFromApi(`${type}/${id}`, {
-    append_to_response: 'credits,videos,similar,recommendations',
+    append_to_response: 'credits,videos,similar,recommendations,external_ids,translations',
   });
   return { ...data, media_type: type };
 }

@@ -75,6 +75,25 @@ export interface Season {
 
 export interface MediaDetail extends MediaItem {
   genres: Genre[];
+  imdb_id?: string;
+  external_ids?: {
+    imdb_id?: string;
+    [key: string]: any;
+  };
+  spoken_languages?: Array<{
+    english_name: string;
+    iso_639_1: string;
+    name: string;
+  }>;
+  translations?: {
+    translations?: Array<{
+      iso_639_1: string;
+      iso_3166_1: string;
+      name: string;
+      english_name: string;
+      data?: any;
+    }>;
+  };
   credits?: {
     cast: CastMember[];
     crew: CrewMember[];
@@ -199,4 +218,51 @@ export interface ServerOption {
   badge: string;
   quality: string;
   description: string;
+}
+
+export interface NuvioRepository {
+  id: string;
+  name: string;
+  url: string;
+  baseUrl: string;
+  version: string;
+  author: string;
+  description: string;
+  scrapersCount: number;
+  status: 'ready' | 'loading' | 'error';
+  enabled?: boolean;
+}
+
+export interface NuvioScraper {
+  id: string;
+  name: string;
+  description: string;
+  version: string;
+  author: string;
+  supportedTypes: string[];
+  filename: string;
+  formats?: string[];
+  logo?: string;
+  contentLanguage?: string[];
+  repoId: string;
+  repoName: string;
+  fileUrl: string;
+  enabled?: boolean;
+}
+
+export interface NuvioStream {
+  id: string;
+  name: string;
+  title: string;
+  url: string;
+  quality: string;
+  size?: string;
+  providerId: string;
+  providerName: string;
+  repoName: string;
+  format?: 'm3u8' | 'mp4' | 'mkv' | 'embed' | 'auto';
+  isDirect?: boolean;
+  headers?: Record<string, string>;
+  subtitles?: Array<{ url: string; lang: string }>;
+  behaviorHints?: any;
 }

@@ -957,11 +957,106 @@ export function removeContinueWatching(id: number, mediaType: MediaType): void {
 
 // Preferred server
 export function getPreferredServer(): string {
-  return localStorage.getItem(PREFERRED_SERVER_KEY) || 'twoembed';
+  const saved = localStorage.getItem(PREFERRED_SERVER_KEY);
+  return saved || 'auto';
 }
 
 export function setPreferredServer(serverId: string): void {
   localStorage.setItem(PREFERRED_SERVER_KEY, serverId);
+}
+
+// -------------------------------------------------------------
+// Nuvio Providers & Repositories On/Off Settings
+// -------------------------------------------------------------
+const NUVIO_ENABLED_REPOS_KEY = 'zinovis_nuvio_enabled_repos_v2';
+const NUVIO_ENABLED_PROVIDERS_KEY = 'zinovis_nuvio_enabled_providers_v2';
+
+export function getEnabledRepositories(): Record<string, boolean> {
+  try {
+    const raw = localStorage.getItem(NUVIO_ENABLED_REPOS_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+
+export function isRepositoryEnabled(repoId: string): boolean {
+  if (!repoId) return true;
+  const map = getEnabledRepositories();
+  const val = map[repoId.toLowerCase()];
+  return val !== false;
+}
+
+export function setRepositoryEnabled(repoId: string, enabled: boolean): void {
+  try {
+    const map = getEnabledRepositories();
+    map[repoId.toLowerCase()] = enabled;
+    localStorage.setItem(NUVIO_ENABLED_REPOS_KEY, JSON.stringify(map));
+  } catch (e) {
+    console.error('Failed to save repository status:', e);
+  }
+}
+
+export function setAllRepositoriesEnabled(repoIds: string[], enabled: boolean): void {
+  try {
+    const map = getEnabledRepositories();
+    repoIds.forEach((id) => {
+      map[id.toLowerCase()] = enabled;
+    });
+    localStorage.setItem(NUVIO_ENABLED_REPOS_KEY, JSON.stringify(map));
+  } catch (e) {
+    console.error('Failed to batch save repository status:', e);
+  }
+}
+
+export function getEnabledProviders(): Record<string, boolean> {
+  try {
+    const raw = localStorage.getItem(NUVIO_ENABLED_PROVIDERS_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+
+export function isProviderEnabled(providerId: string, repoId?: string): boolean {
+  if (!providerId) return true;
+  if (repoId && !isRepositoryEnabled(repoId)) {
+    return false;
+  }
+  const map = getEnabledProviders();
+  const val = map[providerId.toLowerCase()];
+  return val !== false;
+}
+
+export function setProviderEnabled(providerId: string, enabled: boolean): void {
+  try {
+    const map = getEnabledProviders();
+    map[providerId.toLowerCase()] = enabled;
+    localStorage.setItem(NUVIO_ENABLED_PROVIDERS_KEY, JSON.stringify(map));
+  } catch (e) {
+    console.error('Failed to save provider status:', e);
+  }
+}
+
+export function setAllProvidersEnabled(providerIds: string[], enabled: boolean): void {
+  try {
+    const map = getEnabledProviders();
+    providerIds.forEach((id) => {
+      map[id.toLowerCase()] = enabled;
+    });
+    localStorage.setItem(NUVIO_ENABLED_PROVIDERS_KEY, JSON.stringify(map));
+  } catch (e) {
+    console.error('Failed to batch save provider status:', e);
+  }
+}
+
+export function resetProviderSettings(): void {
+  try {
+    localStorage.removeItem(NUVIO_ENABLED_REPOS_KEY);
+    localStorage.removeItem(NUVIO_ENABLED_PROVIDERS_KEY);
+  } catch (e) {
+    console.error('Failed to reset provider settings:', e);
+  }
 }
 
 // -------------------------------------------------------------

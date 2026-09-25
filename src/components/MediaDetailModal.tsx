@@ -13,10 +13,20 @@ import {
   ChevronDown, 
   Volume2, 
   Share2,
-  Users
+  Users,
+  Languages,
+  Headphones,
+  Award,
+  Globe,
+  ExternalLink
 } from 'lucide-react';
 import { MediaDetail, MediaType, Season, Episode } from '../types';
 import { getMediaDetail, getSeasonDetail, getImageUrl, GENRE_MAP } from '../services/tmdb';
+import { 
+  detectRegionalAndDubOptions, 
+  AudioTrackOption, 
+  DEFAULT_NUVIO_REPOSITORIES 
+} from '../services/nuvioService';
 import { isInWatchlist, toggleWatchlist, setPreferredServer } from '../utils/storage';
 import { useAuth } from '../context/AuthContext';
 
@@ -43,6 +53,9 @@ export const MediaDetailModal: React.FC<MediaDetailModalProps> = ({
   const [seasonDetail, setSeasonDetail] = useState<Season | null>(null);
   const [loadingSeason, setLoadingSeason] = useState(false);
 
+  // Nuvio Regional & Audio Dub state
+  const [audioDubs, setAudioDubs] = useState<AudioTrackOption[]>([]);
+
   const [inWatchlist, setInWatchlist] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
 
@@ -57,6 +70,7 @@ export const MediaDetailModal: React.FC<MediaDetailModalProps> = ({
         if (!isMounted) return;
         setDetail(data);
         setInWatchlist(isInWatchlist(data.id, mediaType));
+        setAudioDubs(detectRegionalAndDubOptions(data));
 
         if (mediaType === 'tv' && data.seasons && data.seasons.length > 0) {
           // Default to season 1 or first available season
@@ -185,6 +199,10 @@ export const MediaDetailModal: React.FC<MediaDetailModalProps> = ({
                         {detail.vote_average.toFixed(1)} / 10
                       </span>
                     )}
+                    <span className="flex items-center gap-1 text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 px-2 py-0.5 rounded text-[10px] font-bold">
+                      <Sparkles className="w-3 h-3 text-emerald-400" />
+                      Nuvio Stream Engine (200+ Scrapers)
+                    </span>
                     <span className="text-neutral-300">• {year}</span>
                     {runtimeMinutes && <span className="text-neutral-400">• {runtimeMinutes} mins</span>}
                   </div>
@@ -212,6 +230,20 @@ export const MediaDetailModal: React.FC<MediaDetailModalProps> = ({
                       <Play className="w-4 h-4 md:w-5 md:h-5 fill-current" />
                       <span>{mediaType === 'tv' ? 'Watch Season 1 Episode 1' : 'Play Movie in HD'}</span>
                     </button>
+
+                    {/* Hindi Dub Direct Watch */}
+                    {audioDubs.some(d => d.id === 'hindi') && (
+                      <button
+                        onClick={() => {
+                          setPreferredServer('vidlink');
+                          onPlayMedia(detail.id, mediaType, selectedSeasonNum, 1);
+                        }}
+                        className="flex items-center gap-2 px-5 py-3 md:px-7 md:py-4 rounded-xl bg-gradient-to-r from-amber-600 to-red-600 hover:from-amber-500 hover:to-red-500 text-white font-bold text-sm md:text-base shadow-xl shadow-amber-600/30 hover:scale-[1.02] transition-all cursor-pointer"
+                      >
+                        <span className="text-base">🇮🇳</span>
+                        <span>Watch in Hindi Dub</span>
+                      </button>
+                    )}
 
                     <button
                       onClick={handleToggleWatchlist}
@@ -316,6 +348,77 @@ export const MediaDetailModal: React.FC<MediaDetailModalProps> = ({
                           {g.name}
                         </span>
                       ))}
+                    </div>
+                  </div>
+
+                  {/* Audio & Dubbing Availability */}
+                  <div className="space-y-2 p-4 rounded-2xl bg-neutral-950/70 border border-neutral-800">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <Languages className="w-4 h-4 text-red-500" />
+                        <h3 className="text-sm font-bold text-white">Audio Tracks & Dubs</h3>
+                      </div>
+                      {audioDubs.some(d => d.id === 'hindi') && (
+                        <span className="text-[11px] font-bold text-amber-300 bg-amber-500/10 border border-amber-500/30 px-2 py-0.5 rounded-md">
+                          🇮🇳 Hindi Dub Available
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex flex-wrap gap-2 pt-1">
+                      {audioDubs.map((dub) => (
+                        <span
+                          key={dub.id}
+                          className="px-2.5 py-1 rounded-xl bg-neutral-900 border border-neutral-800 text-xs font-semibold text-neutral-200 flex items-center gap-1.5"
+                        >
+                          <span>{dub.flag || '🎧'}</span>
+                          <span>{dub.name}</span>
+                          <span className="text-[10px] text-neutral-400 bg-neutral-800 px-1.5 py-0.5 rounded">
+                            {dub.badge}
+                          </span>
+                        </span>
+                      ))}
+                    </div>
+                    <p className="text-[11px] text-neutral-400">
+                      💡 Choose your preferred audio or dubbed track in the player controls when streaming.
+                    </p>
+                  </div>
+
+                  {/* Nuvio Multi-Source Streaming Intel Card */}
+                  <div className="p-4 rounded-2xl bg-neutral-950/70 border border-neutral-800 space-y-3">
+                    <div className="flex items-center justify-between border-b border-neutral-800 pb-2">
+                      <div className="flex items-center gap-2">
+                        <Film className="w-4 h-4 text-red-500" />
+                        <h3 className="text-sm font-bold text-white">Nuvio Provider Multi-Source Engine</h3>
+                        <span className="text-[10px] font-mono bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 px-1.5 py-0.5 rounded">
+                          6 Repos Active
+                        </span>
+                      </div>
+                      <span className="text-[11px] text-neutral-400">
+                        200+ Scrapers Online
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 text-xs">
+                      {DEFAULT_NUVIO_REPOSITORIES.map((repo) => (
+                        <div key={repo.id} className="p-2 rounded-xl bg-neutral-900/60 border border-neutral-800/80 space-y-0.5">
+                          <div className="flex items-center justify-between">
+                            <span className="font-bold text-white text-[11px] truncate">{repo.name}</span>
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                          </div>
+                          <span className="text-[10px] text-neutral-400 block">{repo.scrapersCount} active scrapers</span>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="pt-1 flex items-center justify-between text-[11px] text-neutral-400">
+                      <span>Direct 4K, 1080p, HLS, Dual Audio & Dubs supported.</span>
+                      <button
+                        onClick={() => onPlayMedia(detail.id, mediaType, selectedSeasonNum, 1)}
+                        className="text-red-400 hover:text-red-300 font-bold flex items-center gap-1 cursor-pointer"
+                      >
+                        <Play className="w-3 h-3 fill-current" />
+                        <span>Stream Now</span>
+                      </button>
                     </div>
                   </div>
 
@@ -455,8 +558,8 @@ export const MediaDetailModal: React.FC<MediaDetailModalProps> = ({
                           title={vid.name}
                           className="w-full h-full border-0"
                           allowFullScreen
-                          allow="autoplay; encrypted-media; picture-in-picture; accelerometer; gyroscope; clipboard-write"
-                          referrerPolicy="no-referrer"
+                          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                          referrerPolicy="strict-origin-when-cross-origin"
                         />
                       </div>
                       <p className="text-xs font-bold text-neutral-300 truncate">{vid.name}</p>

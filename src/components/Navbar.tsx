@@ -19,26 +19,22 @@ import {
   Headphones,
   ShieldCheck,
   Settings,
-  Download
+  Download,
+  Layers,
+  Power
 } from 'lucide-react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { MediaItem, MediaType } from '../types';
 import { searchMulti, getImageUrl } from '../services/tmdb';
 import { useAuth } from '../context/AuthContext';
 import { DEFAULT_AVATAR, getInitialAvatar } from '../utils/avatars';
+import { NuvioProvidersModal } from './NuvioProvidersModal';
 
 interface NavbarProps {
   onOpenFilter: () => void;
 }
 
-export const SERVERS = [
-  { id: 'vidsrc_cc', name: 'Server 1: VidSrc CC', badge: '1080p Ultra HD', description: 'Fastest multi-audio CDN' },
-  { id: 'vidsrc_pro', name: 'Server 2: VidSrc Pro', badge: '1080p HD', description: 'High reliability server' },
-  { id: 'vidsrc_xyz', name: 'Server 3: VidSrc XYZ', badge: '1080p HD', description: 'High speed buffer' },
-  { id: 'autoembed', name: 'Server 4: AutoEmbed Prime', badge: '1080p HD', description: 'Multi-subtitles & streams' },
-  { id: 'twoembed', name: 'Server 5: 2Embed VIP', badge: '1080p HD', description: 'Alternative HD stream' },
-  { id: 'smashy', name: 'Server 6: SmashyStream', badge: '1080p HD', description: 'Global multi-server player' },
-];
+export const SERVERS: Array<{ id: string; name: string; badge: string; description: string }> = [];
 
 export const Navbar: React.FC<NavbarProps> = ({ onOpenFilter }) => {
   const { 
@@ -57,6 +53,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenFilter }) => {
   const [showDropdown, setShowDropdown] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
+  const [showNuvioModal, setShowNuvioModal] = useState(false);
 
   const searchRef = useRef<HTMLDivElement>(null);
   const profileRef = useRef<HTMLDivElement>(null);
@@ -277,14 +274,39 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenFilter }) => {
               )}
             </div>
 
+            {/* APIs & Providers ON/OFF Hub Button */}
+            <button
+              onClick={() => setShowNuvioModal(true)}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 sm:px-3 sm:py-1.5 rounded-xl bg-gradient-to-r from-red-600/90 via-rose-600/90 to-amber-600/90 hover:from-red-500 hover:to-amber-500 border border-red-500/40 text-white text-xs font-bold transition-all shadow-md shadow-red-600/20 cursor-pointer flex-shrink-0"
+              title="Configure 6 Manifest APIs & Providers (ON / OFF)"
+            >
+              <Power className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">APIs</span>
+              <span className="px-1.5 py-0.2 rounded-md bg-black/40 text-[10px] text-emerald-300 font-bold hidden md:inline">
+                ON/OFF
+              </span>
+            </button>
+
             {/* Filter Toggle */}
             <button
               onClick={onOpenFilter}
-              className="p-1.5 sm:p-2 rounded-xl bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-white hover:bg-neutral-800 transition-all flex-shrink-0"
+              className="p-1.5 sm:p-2 rounded-xl bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-white hover:bg-neutral-800 transition-all flex-shrink-0 cursor-pointer"
               title="Filter Catalog"
             >
               <Sliders className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             </button>
+
+            {/* Download App Icon & Link (Android & PC Web) */}
+            <a
+              href="https://sites.google.com/view/zinovis/site"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 sm:px-3 sm:py-1.5 rounded-xl bg-neutral-900 border border-neutral-800 hover:border-red-500/40 hover:bg-neutral-850 text-neutral-300 hover:text-white transition-all cursor-pointer group shadow-sm"
+              title="Download Zinovis App (Android & PC Web)"
+            >
+              <Download className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-red-500 group-hover:scale-110 transition-transform" />
+              <span className="hidden sm:inline text-xs font-semibold">Download</span>
+            </a>
 
             {/* Live Support Button */}
             <button
@@ -419,21 +441,6 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenFilter }) => {
                         <Settings className="w-3.5 h-3.5 text-neutral-400" />
                         <span>Streaming & Settings</span>
                       </button>
-
-                      <a
-                        href="https://zinovisdownloadapk.netlify.app/"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        onClick={() => setShowProfileMenu(false)}
-                        className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-neutral-300 hover:text-white hover:bg-neutral-800/80 rounded-xl transition-colors cursor-pointer"
-                        title="this app only for android and pc web"
-                      >
-                        <Download className="w-3.5 h-3.5 text-red-400" />
-                        <div className="text-left">
-                          <div className="font-semibold text-white">Download App</div>
-                          <div className="text-[10px] text-neutral-400">this app only for android and pc web</div>
-                        </div>
-                      </a>
                     </div>
 
                     <div className="border-t border-neutral-800 pt-1">
@@ -500,6 +507,12 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenFilter }) => {
         );
       })}
     </nav>
+
+    {/* Nuvio Providers Ecosystem Modal */}
+    <NuvioProvidersModal
+      isOpen={showNuvioModal}
+      onClose={() => setShowNuvioModal(false)}
+    />
   </>
   );
 };

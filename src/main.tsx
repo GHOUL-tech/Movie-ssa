@@ -41,6 +41,13 @@ window.addEventListener('unhandledrejection', (event) => {
   }
 });
 
+// Register Service Worker for Android PWA installability
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => {});
+  });
+}
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <BrowserRouter>

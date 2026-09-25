@@ -109,7 +109,7 @@ export const Footer: React.FC<FooterProps> = ({ onNavigateTab }) => {
                 </li>
                 <li>
                   <a
-                    href="https://zinovisdownloadapk.netlify.app/"
+                    href="https://sites.google.com/view/zinovis/site"
                     target="_blank"
                     rel="noopener noreferrer"
                     className="hover:text-white transition-colors flex items-center gap-1.5 text-neutral-300"

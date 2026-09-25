@@ -527,7 +527,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
               Active HD Server
             </span>
             <div className="text-xs sm:text-sm font-bold text-emerald-400 truncate mt-1">
-              {SERVERS.find(s => s.id === preferredServer)?.name.split(':')[1] || 'VidSrc Ultra'}
+              {SERVERS.find(s => s.id === preferredServer)?.name.split(':')[1] || 'VidLink Pro'}
             </div>
           </div>
         </div>
@@ -1407,7 +1407,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
                 </div>
               </div>
               <span className="hidden sm:inline-block px-3 py-1 rounded-full bg-red-500/20 text-red-400 text-xs font-bold border border-red-500/30">
-                Active: {SERVERS.find(s => s.id === preferredServer)?.name.split(':')[0] || 'VidSrc CC'}
+                Active: {SERVERS.find(s => s.id === preferredServer)?.name.split(':')[0] || 'Server 1'}
               </span>
             </div>
 
