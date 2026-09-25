@@ -459,7 +459,22 @@ async function executeScraper(
   if (!Array.isArray(rawStreams)) return [];
 
   return rawStreams
-    .filter((s) => s && (s.url || s.link))
+    .filter((s) => {
+      if (!s || (!s.url && !s.link)) return false;
+      const u = (s.url || s.link).toLowerCase();
+      // Exclude ad shorteners, countdown generators, and captcha walls that don't stream video
+      if (
+        u.includes('pixel.hubcloud') || 
+        u.includes('hubcloud.ist') || 
+        u.includes('thenaukriadda') || 
+        u.includes('shrinkme') ||
+        u.includes('droplink') ||
+        u.includes('gofile.io/download')
+      ) {
+        return false;
+      }
+      return true;
+    })
     .map((s, idx) => {
       const streamUrl = s.url || s.link;
       const lower = streamUrl.toLowerCase();
@@ -471,9 +486,6 @@ async function executeScraper(
         lower.includes('embed') || 
         lower.includes('player') || 
         lower.includes('iframe') ||
-        lower.includes('hubcloud') ||
-        lower.includes('pixel.') ||
-        lower.includes('thenaukriadda') ||
         lower.includes('.html') ||
         lower.includes('/watch') ||
         s.type === 'embed'
@@ -481,7 +493,7 @@ async function executeScraper(
         format = 'embed';
       }
 
-      const isDirect = (format === 'm3u8' || format === 'mp4' || format === 'mkv' || s.type === 'direct') && format !== 'embed';
+      const isDirect = (format === 'm3u8' || format === 'mp4' || s.type === 'direct') && format !== 'embed';
 
       return {
         id: `${scraper.id}-${idx}-${Date.now()}`,
@@ -617,17 +629,17 @@ export async function getStreamsForMedia(
   const imdbId = await resolveImdbId(mediaType, tmdbId);
   const nuvioUniversalStreams: StreamResult[] = [
     {
-      id: `nuvio-cloud-ultra-${tmdbId}`,
-      name: 'Nuvio Cloud Ultra (Fast 1080p)',
-      title: `${mediaType === 'tv' ? `S${season} E${episode} - ` : ''}Nuvio Cloud Ultra (1080p Multi-Audio)`,
+      id: `nuvio-vidlink-${tmdbId}`,
+      name: 'Nuvio Ultra Stream (1080p Multi-Audio)',
+      title: `${mediaType === 'tv' ? `S${season} E${episode} - ` : ''}Nuvio Ultra Stream (1080p Multi-Audio)`,
       url: mediaType === 'movie'
-        ? `https://vidlink.pro/movie/${tmdbId}?primaryColor=1e88e5&secondaryColor=ffffff`
-        : `https://vidlink.pro/tv/${tmdbId}/${season}/${episode}?primaryColor=1e88e5&secondaryColor=ffffff`,
+        ? `https://vidlink.pro/movie/${tmdbId}?primaryColor=e50914&secondaryColor=ffffff`
+        : `https://vidlink.pro/tv/${tmdbId}/${season}/${episode}?primaryColor=e50914&secondaryColor=ffffff`,
       quality: '1080p',
       size: 'Direct HD',
-      providerId: 'nuvio-cloud',
-      providerName: 'Nuvio Cloud Engine',
-      repoName: "Ray's Plugins",
+      providerId: 'vidlink',
+      providerName: 'VidLink (Yoru & Michat88)',
+      repoName: "Yoru's Repo",
       format: 'embed',
       isDirect: true
     },
@@ -647,58 +659,52 @@ export async function getStreamsForMedia(
       isDirect: true
     },
     {
-      id: `nuvio-multidub-${tmdbId}`,
-      name: 'Nuvio Dual Audio (Dubs & Subs)',
-      title: `${mediaType === 'tv' ? `S${season} E${episode} - ` : ''}Nuvio Dual Audio & Subtitles`,
+      id: `nuvio-vidsrc-${tmdbId}`,
+      name: 'Nuvio Vidsrc Pro (1080p HD)',
+      title: `${mediaType === 'tv' ? `S${season} E${episode} - ` : ''}Nuvio Vidsrc Pro HD`,
       url: mediaType === 'movie'
-        ? `https://player.autoembed.cc/embed/movie/${tmdbId}`
-        : `https://player.autoembed.cc/embed/tv/${tmdbId}/${season}/${episode}`,
+        ? `https://vidsrc.to/embed/movie/${tmdbId}`
+        : `https://vidsrc.to/embed/tv/${tmdbId}/${season}/${episode}`,
       quality: '1080p',
       size: 'Multi-Dub',
-      providerId: 'nuvio-dubs',
-      providerName: 'Nuvio Dual Audio',
-      repoName: "Yoru's Repo",
-      format: 'embed',
-      isDirect: true
-    },
-    {
-      id: `nuvio-global-${tmdbId}`,
-      name: 'Nuvio Global Mirror',
-      title: `${mediaType === 'tv' ? `S${season} E${episode} - ` : ''}Nuvio Global Mirror Player`,
-      url: mediaType === 'movie'
-        ? `https://player.smashy.stream/movie/${tmdbId}`
-        : `https://player.smashy.stream/tv/${tmdbId}?s=${season}&e=${episode}`,
-      quality: '720p',
-      size: 'Global Fast',
-      providerId: 'nuvio-global',
-      providerName: 'Nuvio Global',
+      providerId: 'nuvio-vidsrc',
+      providerName: 'Nuvio Vidsrc',
       repoName: "Phisher's Repo",
       format: 'embed',
       isDirect: true
     }
   ];
 
-  if (flattened.length === 0) {
-    flattened.push(...nuvioUniversalStreams);
-  } else {
-    // If scrapers returned direct links, also add the cloud streams as resilient backup
-    flattened.push(nuvioUniversalStreams[0]);
-  }
+  flattened.unshift(...nuvioUniversalStreams);
 
-  // Deduplicate and prioritize high quality streams (4K 2160p -> 1080p -> 720p)
-  const qualityWeight = (q: string) => {
-    const lower = (q || '').toLowerCase();
-    if (lower.includes('2160') || lower.includes('4k')) return 100;
-    if (lower.includes('1080')) return 80;
-    if (lower.includes('720')) return 60;
-    if (lower.includes('480')) return 40;
+  // Playability score prioritizes immediate streaming formats (tested embed & HLS/MP4) over unstreamable raw files
+  const playabilityScore = (s: StreamResult) => {
+    const url = (s.url || '').toLowerCase();
+    // Raw MKV containers cannot be decoded in native HTML5 video tags in Chrome/Safari: rank lowest
+    if (s.format === 'mkv' || url.endsWith('.mkv')) return 10;
+    // Verified fast embeds
+    if (url.includes('vidlink.pro')) return 100;
+    if (url.includes('vidsrcme.ru')) return 98;
+    if (url.includes('vidsrc.to')) return 96;
+    // Direct HLS & MP4
+    if (s.format === 'm3u8' || url.includes('.m3u8')) return 92;
+    if (s.format === 'mp4' || url.includes('.mp4')) return 88;
+    if (s.format === 'embed') return 80;
     return 50;
   };
 
-  flattened.sort((a, b) => qualityWeight(b.quality) - qualityWeight(a.quality));
+  flattened.sort((a, b) => playabilityScore(b) - playabilityScore(a));
 
-  streamsCache.set(cacheKey, { streams: flattened, timestamp: Date.now() });
-  return { streams: flattened, sourcesCount: flattened.length };
+  // Deduplicate by URL
+  const seenUrls = new Set<string>();
+  const deduplicated = flattened.filter((st) => {
+    if (seenUrls.has(st.url)) return false;
+    seenUrls.add(st.url);
+    return true;
+  });
+
+  streamsCache.set(cacheKey, { streams: deduplicated, timestamp: Date.now() });
+  return { streams: deduplicated, sourcesCount: deduplicated.length };
 }
 
 /**

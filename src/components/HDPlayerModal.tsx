@@ -579,12 +579,13 @@ export const HDPlayerModal: React.FC<HDPlayerModalProps> = ({
 
               {/* Quick Nuvio Scraper Pills */}
               {[
-                { id: 'auto', label: 'Auto (Best 4K/1080p)' },
-                { id: '4khdhub', label: '4KHDHub (4K UHD)' },
-                { id: 'streamflix', label: 'StreamFlix (1080p)' },
-                { id: 'airflix', label: 'Airflix (Fast HLS)' },
-                { id: 'moviesdrive', label: 'MoviesDrive' },
+                { id: 'auto', label: 'Auto (Best Multi-Source)' },
+                { id: 'vidlink', label: 'Vidlink (Fast HD)' },
+                { id: 'streamflix', label: 'StreamFlix' },
                 { id: 'allanime', label: 'AllAnime (Sub/Dub)' },
+                { id: 'moviesdrive', label: 'MoviesDrive' },
+                { id: '4khdhub', label: '4KHDHub' },
+                { id: 'airflix', label: 'Airflix' },
                 { id: 'tamilmv', label: 'TamilMV' }
               ].map((prov) => {
                 const isActive = selectedNuvioProvider === prov.id;
@@ -593,7 +594,6 @@ export const HDPlayerModal: React.FC<HDPlayerModalProps> = ({
                     key={prov.id}
                     onClick={() => {
                       setSelectedNuvioProvider(prov.id);
-                      setPlayerMode('direct');
                     }}
                     className={`px-2.5 py-1 rounded-xl font-bold text-xs transition-all flex items-center gap-1.5 flex-shrink-0 cursor-pointer ${
                       isActive
@@ -617,41 +617,44 @@ export const HDPlayerModal: React.FC<HDPlayerModalProps> = ({
               ) : nuvioStreams.length > 0 ? (
                 <span className="text-[11px] text-emerald-300 font-semibold bg-emerald-500/10 px-2.5 py-1 rounded-xl border border-emerald-500/20 flex items-center gap-1.5">
                   <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                  <span>{nuvioStreams.length} Direct Streams Found</span>
+                  <span>{nuvioStreams.length} Verified Streams Found</span>
                 </span>
               ) : (
                 <span className="text-[11px] text-blue-300 font-semibold bg-blue-500/10 px-2.5 py-1 rounded-xl border border-blue-500/20 flex items-center gap-1.5">
                   <Monitor className="w-3 h-3" />
-                  <span>CDN Embed Ready</span>
+                  <span>Fast Stream Ready</span>
                 </span>
               )}
             </div>
           </div>
 
-          {/* Stream Quality Selector Bar (if direct streams found) */}
-          {nuvioStreams.length > 0 && playerMode === 'direct' && (
+          {/* Stream Switcher Bar (always visible when multiple streams are available) */}
+          {nuvioStreams.length > 1 && (
             <div className="flex items-center gap-2 px-3 py-1.5 bg-neutral-950/70 border border-neutral-800/80 rounded-2xl overflow-x-auto no-scrollbar text-xs">
               <span className="text-[10px] font-bold text-neutral-400 flex items-center gap-1 flex-shrink-0">
                 <Zap className="w-3 h-3 text-amber-400" />
-                <span>Available Streams:</span>
+                <span>Stream Sources:</span>
               </span>
               {nuvioStreams.map((st, idx) => {
                 const isSelected = selectedStream?.id === st.id;
                 return (
                   <button
                     key={st.id}
-                    onClick={() => setSelectedStream(st)}
+                    onClick={() => {
+                      setSelectedStream(st);
+                      setPlayerMode(st.format === 'embed' || !st.isDirect ? 'embed' : 'direct');
+                    }}
                     className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 flex-shrink-0 cursor-pointer ${
                       isSelected
                         ? 'bg-amber-500 text-black shadow-md shadow-amber-500/30'
                         : 'bg-neutral-900 hover:bg-neutral-800 text-neutral-300 hover:text-white border border-neutral-800'
                     }`}
                   >
-                    <span>Stream {idx + 1}</span>
+                    <span>Server {idx + 1}</span>
                     <span className={`text-[10px] px-1 rounded ${isSelected ? 'bg-black/20 text-black' : 'bg-neutral-800 text-amber-400'}`}>
                       {st.quality}
                     </span>
-                    {st.size && <span className="text-[9px] opacity-75">{st.size}</span>}
+                    <span className="text-[10px] opacity-75">{st.name.split('-')[0].trim()}</span>
                   </button>
                 );
               })}
@@ -669,7 +672,7 @@ export const HDPlayerModal: React.FC<HDPlayerModalProps> = ({
                   <p className="text-xs text-neutral-400">Searching 4K & 1080p direct video streams across enabled repositories</p>
                 </div>
               ) : selectedStream ? (
-                playerMode === 'embed' || selectedStream.format === 'embed' ? (
+                playerMode === 'embed' || selectedStream.format === 'embed' || !selectedStream.isDirect ? (
                   /* Embed Stream Player */
                   <iframe
                     key={selectedStream.id}
@@ -681,7 +684,6 @@ export const HDPlayerModal: React.FC<HDPlayerModalProps> = ({
                     scrolling="no"
                     allowFullScreen
                     allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                    referrerPolicy="origin"
                     className="w-full h-full border-0"
                   />
                 ) : (
@@ -694,7 +696,11 @@ export const HDPlayerModal: React.FC<HDPlayerModalProps> = ({
                     controlsList="nodownload"
                     className="w-full h-full object-contain bg-black"
                     onError={() => {
-                      console.log('Direct HTML5 playback error on:', selectedStream.title, 'switching to embed player');
+                      console.log('Direct HTML5 playback error, switching to verified embed stream');
+                      const embedFallback = nuvioStreams.find(s => s.format === 'embed') || nuvioStreams[0];
+                      if (embedFallback && embedFallback.id !== selectedStream.id) {
+                        setSelectedStream(embedFallback);
+                      }
                       setPlayerMode('embed');
                     }}
                   />
