@@ -189,14 +189,79 @@ export async function fetchNuvioStreams(
     const res = await fetch(`/api/nuvio/streams?${params.toString()}`);
     if (res.ok) {
       const data = await res.json();
-      if (data.success && Array.isArray(data.streams)) {
+      if (data.success && Array.isArray(data.streams) && data.streams.length > 0) {
         return data.streams;
       }
     }
   } catch (err) {
-    console.warn('[NuvioService] Failed to fetch streams:', err);
+    console.warn('[NuvioService] Failed to fetch streams from backend API:', err);
   }
-  return [];
+
+  // Client-Side Emergency Fallback Streams for static hostings (Vercel, Netlify, offline)
+  const clientFallbacks: NuvioStream[] = [
+    {
+      id: `client-vidlink-${tmdbId}`,
+      name: 'Nuvio Ultra Stream (1080p Multi-Audio)',
+      title: `${mediaType === 'tv' ? `S${season} E${episode} - ` : ''}Nuvio Ultra Stream (1080p Multi-Audio)`,
+      url: mediaType === 'movie'
+        ? `https://vidlink.pro/movie/${tmdbId}?primaryColor=e50914&secondaryColor=ffffff`
+        : `https://vidlink.pro/tv/${tmdbId}/${season}/${episode}?primaryColor=e50914&secondaryColor=ffffff`,
+      quality: '1080p',
+      size: 'Direct HD',
+      providerId: 'vidlink',
+      providerName: 'VidLink Pro',
+      repoName: "Yoru's Repo",
+      format: 'embed',
+      isDirect: true
+    },
+    {
+      id: `client-multiserver-${tmdbId}`,
+      name: 'Nuvio Multi-Server (Auto-Failover)',
+      title: `${mediaType === 'tv' ? `S${season} E${episode} - ` : ''}Nuvio Multi-Server Stream`,
+      url: mediaType === 'movie'
+        ? `https://vidsrcme.ru/embed/movie?tmdb=${tmdbId}`
+        : `https://vidsrcme.ru/embed/tv?tmdb=${tmdbId}&season=${season}&episode=${episode}`,
+      quality: '1080p',
+      size: 'Clean Buffer',
+      providerId: 'nuvio-multiserver',
+      providerName: 'Nuvio Edge',
+      repoName: 'All-in-One-Nuvio',
+      format: 'embed',
+      isDirect: true
+    },
+    {
+      id: `client-vidsrc-${tmdbId}`,
+      name: 'Nuvio Vidsrc Pro (1080p HD)',
+      title: `${mediaType === 'tv' ? `S${season} E${episode} - ` : ''}Nuvio Vidsrc Pro HD`,
+      url: mediaType === 'movie'
+        ? `https://vidsrc.to/embed/movie/${tmdbId}`
+        : `https://vidsrc.to/embed/tv/${tmdbId}/${season}/${episode}`,
+      quality: '1080p',
+      size: 'Multi-Dub',
+      providerId: 'nuvio-vidsrc',
+      providerName: 'Nuvio Vidsrc',
+      repoName: "Phisher's Repo",
+      format: 'embed',
+      isDirect: true
+    },
+    {
+      id: `client-autoembed-${tmdbId}`,
+      name: 'Nuvio AutoEmbed Fast (1080p)',
+      title: `${mediaType === 'tv' ? `S${season} E${episode} - ` : ''}Nuvio AutoEmbed Fast`,
+      url: mediaType === 'movie'
+        ? `https://autoembed.co/movie/tmdb/${tmdbId}`
+        : `https://autoembed.co/tv/tmdb/${tmdbId}/${season}/${episode}`,
+      quality: '1080p',
+      size: 'Instant Load',
+      providerId: 'nuvio-autoembed',
+      providerName: 'Nuvio AutoEmbed',
+      repoName: 'All-in-One-Nuvio',
+      format: 'embed',
+      isDirect: true
+    }
+  ];
+
+  return clientFallbacks;
 }
 
 /**

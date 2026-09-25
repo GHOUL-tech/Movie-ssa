@@ -1,4 +1,10 @@
 import express from 'express';
+import { 
+  getAllRepositories, 
+  getAllScrapers, 
+  getStreamsForMedia, 
+  proxyVideoStream 
+} from '../server/nuvioEngine';
 
 const app = express();
 app.use(express.json({ limit: '10mb' }));
@@ -27,7 +33,7 @@ app.get('/api/system/status', (req, res) => {
   });
 });
 
-// 2.5 Google Sheets Proxy Endpoint (Bypasses browser CORS & adblockers for reliable cross-device sync)
+// 2.5 Google Sheets Proxy Endpoint
 app.post('/api/sheets-proxy', async (req, res) => {
   try {
     const { scriptUrl, payload } = req.body || {};
@@ -82,6 +88,96 @@ app.get('/api/tmdb/*', async (req, res) => {
     console.error('TMDB Proxy Error:', err);
     res.status(500).json({ error: 'Failed to fetch from TMDB API', details: err?.message });
   }
+});
+
+// 3.5 Nuvio Engine Endpoints (For Vercel Serverless Deployment)
+app.get('/api/nuvio/repositories', async (req, res) => {
+  try {
+    const repos = await getAllRepositories();
+    res.setHeader('Cache-Control', 'public, max-age=600');
+    res.json({ success: true, count: repos.length, repositories: repos });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err?.message || 'Failed to list Nuvio repositories' });
+  }
+});
+
+app.get('/api/nuvio/providers', async (req, res) => {
+  try {
+    const { repoId, type, language, search } = req.query as Record<string, string>;
+    let scrapers = await getAllScrapers();
+
+    if (repoId) {
+      scrapers = scrapers.filter((s) => s.repoId.toLowerCase() === repoId.toLowerCase());
+    }
+    if (type) {
+      scrapers = scrapers.filter((s) => s.supportedTypes.includes(type));
+    }
+    if (language) {
+      scrapers = scrapers.filter((s) => 
+        (s.contentLanguage || []).some((l) => l.toLowerCase() === language.toLowerCase())
+      );
+    }
+    if (search) {
+      const q = search.toLowerCase();
+      scrapers = scrapers.filter((s) =>
+        s.name.toLowerCase().includes(q) ||
+        s.description.toLowerCase().includes(q) ||
+        s.author.toLowerCase().includes(q)
+      );
+    }
+
+    res.setHeader('Cache-Control', 'public, max-age=600');
+    res.json({ success: true, count: scrapers.length, providers: scrapers });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err?.message || 'Failed to list Nuvio providers' });
+  }
+});
+
+app.get('/api/nuvio/streams', async (req, res) => {
+  try {
+    const tmdbId = parseInt(req.query.tmdbId as string, 10);
+    const mediaType = (req.query.mediaType as 'movie' | 'tv') || 'movie';
+    const season = parseInt((req.query.season as string) || '1', 10);
+    const episode = parseInt((req.query.episode as string) || '1', 10);
+    const providerId = (req.query.providerId as string) || 'auto';
+    const disabledRepos = req.query.disabledRepos
+      ? (req.query.disabledRepos as string).split(',').map((s) => s.trim().toLowerCase()).filter(Boolean)
+      : [];
+    const disabledProviders = req.query.disabledProviders
+      ? (req.query.disabledProviders as string).split(',').map((s) => s.trim().toLowerCase()).filter(Boolean)
+      : [];
+
+    if (!tmdbId || isNaN(tmdbId)) {
+      return res.status(400).json({ success: false, error: 'Valid tmdbId is required' });
+    }
+
+    const result = await getStreamsForMedia(
+      tmdbId, 
+      mediaType, 
+      season, 
+      episode, 
+      providerId,
+      disabledRepos,
+      disabledProviders
+    );
+    res.setHeader('Cache-Control', 'public, max-age=300');
+    res.json({
+      success: true,
+      tmdbId,
+      mediaType,
+      season,
+      episode,
+      providerId,
+      count: result.streams.length,
+      streams: result.streams
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err?.message || 'Failed to fetch Nuvio streams' });
+  }
+});
+
+app.get('/api/nuvio/proxy-stream', async (req, res) => {
+  await proxyVideoStream(req, res);
 });
 
 // 4. Backend OTP Dispatch
