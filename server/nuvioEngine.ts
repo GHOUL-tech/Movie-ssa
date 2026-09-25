@@ -548,48 +548,46 @@ export async function getStreamsForMedia(
     return true;
   });
 
-  if (enabledScrapers.length === 0) {
-    return { streams: [], sourcesCount: 0 };
-  }
-
   let candidateScrapers: ScraperItem[] = [];
 
-  if (targetProviderId && targetProviderId !== 'auto') {
-    candidateScrapers = enabledScrapers.filter(
-      (s) => s.id.toLowerCase() === targetProviderId.toLowerCase()
-    );
-  }
-
-  // If no specific scraper or "auto", run top high-yield providers in parallel compatible with requested mediaType
-  if (candidateScrapers.length === 0) {
-    const priorityNames = [
-      '4khdhub',
-      'streamflix',
-      'airflix',
-      'moviesdrive',
-      'uhdmovies',
-      'allanime',
-      'animepahe',
-      'bollyflix',
-      'embed69'
-    ];
-
-    const typeCompatible = enabledScrapers.filter((s) =>
-      !s.supportedTypes || s.supportedTypes.length === 0 || s.supportedTypes.includes(mediaType)
-    );
-
-    const seenNames = new Set<string>();
-    for (const p of priorityNames) {
-      const match = typeCompatible.find((s) => s.id.toLowerCase().includes(p) && !seenNames.has(s.name.toLowerCase()));
-      if (match) {
-        seenNames.add(match.name.toLowerCase());
-        candidateScrapers.push(match);
-      }
-      if (candidateScrapers.length >= 5) break;
+  if (enabledScrapers.length > 0) {
+    if (targetProviderId && targetProviderId !== 'auto') {
+      candidateScrapers = enabledScrapers.filter(
+        (s) => s.id.toLowerCase() === targetProviderId.toLowerCase()
+      );
     }
 
+    // If no specific scraper or "auto", run top high-yield providers in parallel compatible with requested mediaType
     if (candidateScrapers.length === 0) {
-      candidateScrapers = typeCompatible.slice(0, 5);
+      const priorityNames = [
+        '4khdhub',
+        'streamflix',
+        'airflix',
+        'moviesdrive',
+        'uhdmovies',
+        'allanime',
+        'animepahe',
+        'bollyflix',
+        'embed69'
+      ];
+
+      const typeCompatible = enabledScrapers.filter((s) =>
+        !s.supportedTypes || s.supportedTypes.length === 0 || s.supportedTypes.includes(mediaType)
+      );
+
+      const seenNames = new Set<string>();
+      for (const p of priorityNames) {
+        const match = typeCompatible.find((s) => s.id.toLowerCase().includes(p) && !seenNames.has(s.name.toLowerCase()));
+        if (match) {
+          seenNames.add(match.name.toLowerCase());
+          candidateScrapers.push(match);
+        }
+        if (candidateScrapers.length >= 5) break;
+      }
+
+      if (candidateScrapers.length === 0) {
+        candidateScrapers = typeCompatible.slice(0, 5);
+      }
     }
   }
 
@@ -606,7 +604,7 @@ export async function getStreamsForMedia(
   const flattened: StreamResult[] = results.flat();
 
   // If a targeted scraper yielded 0 streams, immediately attempt top enabled general scrapers
-  if (flattened.length === 0 && targetProviderId && targetProviderId !== 'auto') {
+  if (flattened.length === 0 && targetProviderId && targetProviderId !== 'auto' && enabledScrapers.length > 0) {
     const fallbackScrapers = enabledScrapers
       .filter((s) => s.id.toLowerCase() !== targetProviderId.toLowerCase())
       .slice(0, 4);
@@ -624,8 +622,7 @@ export async function getStreamsForMedia(
     }
   }
 
-  // If community scrapers returned zero results (or for guaranteed continuous playback), 
-  // ensure verified Nuvio streaming sources are available so the user NEVER experiences "No Streams Found"
+  // Guaranteed continuous high-speed streaming sources so the user NEVER experiences stream failures
   const imdbId = await resolveImdbId(mediaType, tmdbId);
   const nuvioUniversalStreams: StreamResult[] = [
     {
@@ -670,6 +667,21 @@ export async function getStreamsForMedia(
       providerId: 'nuvio-vidsrc',
       providerName: 'Nuvio Vidsrc',
       repoName: "Phisher's Repo",
+      format: 'embed',
+      isDirect: true
+    },
+    {
+      id: `nuvio-autoembed-${tmdbId}`,
+      name: 'Nuvio AutoEmbed Fast (1080p)',
+      title: `${mediaType === 'tv' ? `S${season} E${episode} - ` : ''}Nuvio AutoEmbed Fast`,
+      url: mediaType === 'movie'
+        ? `https://autoembed.co/movie/tmdb/${tmdbId}`
+        : `https://autoembed.co/tv/tmdb/${tmdbId}/${season}/${episode}`,
+      quality: '1080p',
+      size: 'Instant Load',
+      providerId: 'nuvio-autoembed',
+      providerName: 'Nuvio AutoEmbed',
+      repoName: 'All-in-One-Nuvio',
       format: 'embed',
       isDirect: true
     }

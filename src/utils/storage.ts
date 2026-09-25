@@ -974,10 +974,38 @@ const NUVIO_ENABLED_PROVIDERS_KEY = 'zinovis_nuvio_enabled_providers_v2';
 export function getEnabledRepositories(): Record<string, boolean> {
   try {
     const raw = localStorage.getItem(NUVIO_ENABLED_REPOS_KEY);
-    return raw ? JSON.parse(raw) : {};
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      const keys = Object.keys(parsed);
+      if (keys.length > 0) {
+        const hasAnyTrue = Object.values(parsed).some(val => val === true);
+        if (!hasAnyTrue) {
+          // Auto-heal if all repositories were toggled off
+          const resetMap: Record<string, boolean> = {
+            yoruix: true,
+            phisher98: true,
+            allinone: true,
+            spidey: true,
+            michat88: true,
+            ray: true
+          };
+          localStorage.setItem(NUVIO_ENABLED_REPOS_KEY, JSON.stringify(resetMap));
+          return resetMap;
+        }
+      }
+      return parsed;
+    }
   } catch {
-    return {};
+    //
   }
+  return {
+    yoruix: true,
+    phisher98: true,
+    allinone: true,
+    spidey: true,
+    michat88: true,
+    ray: true
+  };
 }
 
 export function isRepositoryEnabled(repoId: string): boolean {
