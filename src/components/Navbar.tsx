@@ -29,6 +29,7 @@ import { searchMulti, getImageUrl } from '../services/tmdb';
 import { useAuth } from '../context/AuthContext';
 import { DEFAULT_AVATAR, getInitialAvatar } from '../utils/avatars';
 import { NuvioProvidersModal } from './NuvioProvidersModal';
+import { APKDownloadModal } from './APKDownloadModal';
 
 interface NavbarProps {
   onOpenFilter: () => void;
@@ -52,6 +53,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenFilter }) => {
   const [scrolled, setScrolled] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [showNuvioModal, setShowNuvioModal] = useState(false);
+  const [showApkModal, setShowApkModal] = useState(false);
 
   const searchRef = useRef<HTMLDivElement>(null);
   const profileRef = useRef<HTMLDivElement>(null);
@@ -294,17 +296,15 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenFilter }) => {
               <Sliders className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             </button>
 
-            {/* Download App Icon & Link (Android & PC Web) */}
-            <a
-              href="https://sites.google.com/view/zinovis/site"
-              target="_blank"
-              rel="noopener noreferrer"
+            {/* Download App Icon & Link (Android APK & WebAPK) */}
+            <button
+              onClick={() => setShowApkModal(true)}
               className="flex items-center gap-1.5 px-2.5 py-1.5 sm:px-3 sm:py-1.5 rounded-xl bg-neutral-900 border border-neutral-800 hover:border-red-500/40 hover:bg-neutral-850 text-neutral-300 hover:text-white transition-all cursor-pointer group shadow-sm"
-              title="Download Zinovis App (Android & PC Web)"
+              title="Download Zinovis Android App (.APK & WebAPK)"
             >
               <Download className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-red-500 group-hover:scale-110 transition-transform" />
-              <span className="hidden sm:inline text-xs font-semibold">Download</span>
-            </a>
+              <span className="hidden sm:inline text-xs font-semibold">Get APK</span>
+            </button>
 
             {/* Live Support Button */}
             <button
@@ -510,6 +510,12 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenFilter }) => {
     <NuvioProvidersModal
       isOpen={showNuvioModal}
       onClose={() => setShowNuvioModal(false)}
+    />
+
+    {/* APK / Android Download Modal */}
+    <APKDownloadModal
+      isOpen={showApkModal}
+      onClose={() => setShowApkModal(false)}
     />
   </>
   );

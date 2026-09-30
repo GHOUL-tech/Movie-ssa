@@ -199,6 +199,7 @@ export const AdminPanel: React.FC = () => {
   const [emailConfigSuccess, setEmailConfigSuccess] = useState<string | null>(null);
   const [testingEmail, setTestingEmail] = useState(false);
   const [testEmailResult, setTestEmailResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [showEmailKeys, setShowEmailKeys] = useState(false);
 
   useEffect(() => {
     setPendingUsers(getPendingUserSyncs());
@@ -2309,12 +2310,22 @@ export const AdminPanel: React.FC = () => {
                     </div>
 
                     <div>
-                      <label className="block text-xs font-bold text-neutral-300 mb-1.5">
-                        Public Key
-                      </label>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <label className="block text-xs font-bold text-neutral-300">
+                          Public Key
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => setShowEmailKeys(!showEmailKeys)}
+                          className="text-neutral-400 hover:text-white transition-colors p-0.5 cursor-pointer"
+                          title={showEmailKeys ? "Hide Key" : "Show Key"}
+                        >
+                          {showEmailKeys ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                        </button>
+                      </div>
                       <input
-                        type="text"
-                        placeholder="4QQ0PbfytyUk2Odp_"
+                        type={showEmailKeys ? "text" : "password"}
+                        placeholder="••••••••••••••••"
                         value={emailConfig.publicKey}
                         onChange={(e) => setEmailConfig({ ...emailConfig, publicKey: e.target.value })}
                         className="w-full px-3.5 py-2.5 bg-neutral-950 border border-neutral-800 focus:border-red-500 rounded-2xl text-xs text-white placeholder:text-neutral-600 focus:outline-none focus:ring-1 focus:ring-red-500 font-mono"
@@ -2322,12 +2333,22 @@ export const AdminPanel: React.FC = () => {
                     </div>
 
                     <div>
-                      <label className="block text-xs font-bold text-neutral-300 mb-1.5">
-                        Private Key
-                      </label>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <label className="block text-xs font-bold text-neutral-300">
+                          Private Key
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => setShowEmailKeys(!showEmailKeys)}
+                          className="text-neutral-400 hover:text-white transition-colors p-0.5 cursor-pointer"
+                          title={showEmailKeys ? "Hide Key" : "Show Key"}
+                        >
+                          {showEmailKeys ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                        </button>
+                      </div>
                       <input
-                        type="text"
-                        placeholder="M8ofvODFUYLwhHyUoEI88"
+                        type={showEmailKeys ? "text" : "password"}
+                        placeholder="••••••••••••••••"
                         value={emailConfig.privateKey || ''}
                         onChange={(e) => setEmailConfig({ ...emailConfig, privateKey: e.target.value })}
                         className="w-full px-3.5 py-2.5 bg-neutral-950 border border-neutral-800 focus:border-red-500 rounded-2xl text-xs text-white placeholder:text-neutral-600 focus:outline-none focus:ring-1 focus:ring-red-500 font-mono"

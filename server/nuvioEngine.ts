@@ -226,8 +226,8 @@ export async function getAllRepositories() {
         return {
           id: repo.id,
           name: repo.name,
-          url: repo.url,
-          baseUrl: repo.baseUrl,
+          url: `/api/nuvio/repository/${repo.id}`,
+          baseUrl: `/api/nuvio/repository/${repo.id}/`,
           version: data.manifest.version || '1.0.0',
           author: repo.author,
           description: repo.description,
@@ -238,8 +238,8 @@ export async function getAllRepositories() {
         return {
           id: repo.id,
           name: repo.name,
-          url: repo.url,
-          baseUrl: repo.baseUrl,
+          url: `/api/nuvio/repository/${repo.id}`,
+          baseUrl: `/api/nuvio/repository/${repo.id}/`,
           version: '1.0.0',
           author: repo.author,
           description: repo.description,

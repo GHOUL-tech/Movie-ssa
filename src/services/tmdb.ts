@@ -1,7 +1,5 @@
 import { Genre, MediaDetail, MediaItem, Season } from '../types';
 
-const DIRECT_TOKEN = "eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiI1MWIzNzE3MWFkZWY4MGZlYTEyNDI4MGE5MjE5NWJjMCIsIm5iZiI6MTc4NTIyODY2NS41NTUsInN1YiI6IjZhNjg2ZDc5NWZhMjNiOTA2MDRmNjdhNiIsInNjb3BlcyI6WyJhcGlfcmVhZCJdLCJ2ZXJzaW9uIjoxfQ.Zszu95k02KQoyOzTfSvXtr7F5h2rpR1iYRo7jdm2nBc";
-
 // Poster & Backdrop image helpers
 export function getImageUrl(path: string | null, size: 'poster' | 'backdrop' | 'original' | 'avatar' = 'poster'): string {
   if (!path) {
@@ -25,30 +23,15 @@ async function fetchFromApi(endpoint: string, params: Record<string, string> = {
   const queryString = new URLSearchParams(params).toString();
   const proxyUrl = `/api/tmdb/${endpoint}${queryString ? `?${queryString}` : ''}`;
 
-  try {
-    const res = await fetch(proxyUrl);
-    const contentType = res.headers.get('content-type') || '';
-    if (res.ok && contentType.includes('application/json')) {
-      return await res.json();
-    }
-  } catch (e) {
-    console.warn("Proxy fetch failed, falling back to direct TMDB API:", e);
+  const res = await fetch(proxyUrl);
+  if (!res.ok) {
+    throw new Error(`TMDB proxy error ${res.status}`);
   }
-
-  // Fallback to direct fetch
-  const directUrl = `https://api.themoviedb.org/3/${endpoint}${queryString ? `?${queryString}` : ''}`;
-  const directRes = await fetch(directUrl, {
-    headers: {
-      'Authorization': `Bearer ${DIRECT_TOKEN}`,
-      'Accept': 'application/json'
-    }
-  });
-
-  if (!directRes.ok) {
-    throw new Error(`TMDB fetch error ${directRes.status}: ${await directRes.text()}`);
+  const contentType = res.headers.get('content-type') || '';
+  if (contentType.includes('application/json')) {
+    return await res.json();
   }
-
-  return await directRes.json();
+  throw new Error('Invalid JSON response from TMDB proxy');
 }
 
 export async function getTrending(mediaType: 'all' | 'movie' | 'tv' = 'all', timeWindow: 'day' | 'week' = 'week'): Promise<MediaItem[]> {

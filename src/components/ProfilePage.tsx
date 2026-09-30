@@ -1492,15 +1492,10 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
                       <div className="flex items-center gap-2 pt-1 text-[11px] text-neutral-500">
                         <span>by <strong className="text-neutral-300">{repo.author}</strong></span>
                         <span>•</span>
-                        <a
-                          href={repo.url}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="hover:text-red-400 flex items-center gap-1 transition-colors"
-                        >
-                          <span>Manifest</span>
-                          <ExternalLink className="w-2.5 h-2.5" />
-                        </a>
+                        <div className="flex items-center gap-1 text-emerald-400 font-semibold text-[11px]">
+                          <ShieldCheck className="w-3 h-3 text-emerald-400" />
+                          <span>Secured API</span>
+                        </div>
                       </div>
                     </div>
 

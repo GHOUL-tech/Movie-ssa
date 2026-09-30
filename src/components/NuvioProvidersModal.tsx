@@ -368,18 +368,15 @@ export const NuvioProvidersModal: React.FC<NuvioProvidersModalProps> = ({
                         {repo.description}
                       </p>
 
-                      {/* Manifest URL Link */}
+                      {/* Encrypted / Protected Repository Endpoint */}
                       <div className="p-2.5 rounded-2xl bg-neutral-950 border border-neutral-800/80 text-[11px] font-mono text-neutral-400 flex items-center justify-between gap-2">
-                        <span className="truncate">{repo.url}</span>
-                        <a
-                          href={repo.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-red-400 hover:text-red-300 p-1 rounded-lg hover:bg-neutral-800 transition-all flex-shrink-0"
-                          title="Open Raw Manifest"
-                        >
-                          <ExternalLink className="w-3.5 h-3.5" />
-                        </a>
+                        <div className="flex items-center gap-2 truncate">
+                          <ShieldCheck className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" />
+                          <span className="truncate text-neutral-300 font-semibold">Protected Nuvio Repository ({repo.id})</span>
+                        </div>
+                        <span className="text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded-full font-sans font-bold flex-shrink-0">
+                          HIDDEN & SECURED
+                        </span>
                       </div>
                     </div>
 
