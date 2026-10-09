@@ -121,14 +121,75 @@ export const MediaDetailModal: React.FC<MediaDetailModalProps> = ({
     refreshUserData();
   };
 
-  const handleShare = () => {
-    let shareUrl = window.location.href;
-    if (shareUrl.includes('ais-dev')) {
-      shareUrl = shareUrl.replace('ais-dev', 'ais-pre');
+  const [shareFeedback, setShareFeedback] = useState<string | null>(null);
+
+  const getStreamingUrl = (seasonNum?: number, episodeNum?: number) => {
+    const origin = window.location.origin.includes('ais-dev')
+      ? window.location.origin.replace('ais-dev', 'ais-pre')
+      : window.location.origin;
+
+    if (mediaType === 'tv') {
+      const s = seasonNum || selectedSeasonNum || 1;
+      const e = episodeNum || 1;
+      return `${origin}/play/tv/${mediaId}/${s}/${e}`;
     }
-    navigator.clipboard.writeText(shareUrl);
-    setCopiedLink(true);
-    setTimeout(() => setCopiedLink(false), 2000);
+    return `${origin}/play/movie/${mediaId}`;
+  };
+
+  const handleShare = async (e?: React.MouseEvent, seasonNum?: number, episodeNum?: number) => {
+    if (e) e.stopPropagation();
+    if (!detail) return;
+
+    const streamUrl = getStreamingUrl(seasonNum, episodeNum);
+    const mediaTitle = detail.title || detail.name || 'Title';
+    const epSuffix = mediaType === 'tv' ? ` (S${seasonNum || selectedSeasonNum} E${episodeNum || 1})` : '';
+    const shareTitle = `${mediaTitle}${epSuffix} - Watch on Zinovis`;
+    const shareText = `Watch "${mediaTitle}" in Full HD on Zinovis Stream!`;
+
+    // Try Native Web Share API first
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: shareTitle,
+          text: shareText,
+          url: streamUrl,
+        });
+        setShareFeedback('Shared successfully!');
+        setTimeout(() => setShareFeedback(null), 2500);
+        return;
+      } catch (err: any) {
+        // If user cancelled, don't show error; if failed or unsupported payload, fallback to clipboard
+        if (err?.name === 'AbortError') {
+          return;
+        }
+      }
+    }
+
+    // Fallback: Copy streaming URL to clipboard
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(streamUrl);
+      } else {
+        const textArea = document.createElement('textarea');
+        textArea.value = streamUrl;
+        textArea.style.position = 'fixed';
+        textArea.style.opacity = '0';
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textArea);
+      }
+      setCopiedLink(true);
+      setShareFeedback('Stream link copied to clipboard!');
+      setTimeout(() => {
+        setCopiedLink(false);
+        setShareFeedback(null);
+      }, 2500);
+    } catch {
+      setShareFeedback('Could not copy link');
+      setTimeout(() => setShareFeedback(null), 2000);
+    }
   };
 
   const title = detail?.title || detail?.name || 'Loading...';
@@ -258,13 +319,20 @@ export const MediaDetailModal: React.FC<MediaDetailModalProps> = ({
                     </button>
 
                     <button
-                      onClick={handleShare}
-                      className="p-3 md:p-4 rounded-xl bg-neutral-800/90 border border-neutral-700 text-neutral-300 hover:text-white transition-all"
-                      title="Share Title"
+                      onClick={(e) => handleShare(e)}
+                      className="flex items-center gap-2 px-4 py-3 md:px-5 md:py-4 rounded-xl bg-neutral-800/90 border border-neutral-700 text-neutral-200 hover:text-white hover:bg-neutral-700 hover:border-neutral-600 transition-all cursor-pointer group shadow-lg"
+                      title="Share streaming URL"
+                      aria-label="Share streaming URL"
                     >
-                      <Share2 className="w-4 h-4 md:w-5 md:h-5" />
+                      <Share2 className="w-4 h-4 md:w-5 md:h-5 text-neutral-400 group-hover:text-red-400 transition-colors" />
+                      <span className="font-bold text-sm md:text-base hidden xs:inline">Share</span>
                     </button>
-                    {copiedLink && <span className="text-xs md:text-sm text-emerald-400 font-semibold">Link Copied!</span>}
+                    {shareFeedback && (
+                      <span className="text-xs md:text-sm text-emerald-400 font-semibold flex items-center gap-1.5 animate-fadeIn bg-emerald-500/10 border border-emerald-500/20 px-3 py-1.5 rounded-lg">
+                        <Check className="w-3.5 h-3.5 text-emerald-400" />
+                        {shareFeedback}
+                      </span>
+                    )}
                   </div>
 
                 </div>
@@ -526,14 +594,23 @@ export const MediaDetailModal: React.FC<MediaDetailModalProps> = ({
                             </p>
                           </div>
 
-                          {/* Play Action */}
-                          <button
-                            onClick={() => onPlayMedia(detail.id, 'tv', selectedSeasonNum, ep.episode_number)}
-                            className="w-full sm:w-auto px-4 py-2 rounded-xl bg-red-600/10 hover:bg-red-600 text-red-400 hover:text-white text-xs font-bold transition-all flex items-center justify-center gap-1.5"
-                          >
-                            <Play className="w-3.5 h-3.5 fill-current" />
-                            <span>Play Ep {ep.episode_number}</span>
-                          </button>
+                          {/* Episode Actions */}
+                          <div className="flex items-center gap-2 w-full sm:w-auto">
+                            <button
+                              onClick={(e) => handleShare(e, selectedSeasonNum, ep.episode_number)}
+                              className="p-2 sm:p-2.5 rounded-xl bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-neutral-400 hover:text-white transition-all"
+                              title={`Share Episode ${ep.episode_number} streaming link`}
+                            >
+                              <Share2 className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={() => onPlayMedia(detail.id, 'tv', selectedSeasonNum, ep.episode_number)}
+                              className="flex-1 sm:flex-initial px-4 py-2 rounded-xl bg-red-600/10 hover:bg-red-600 text-red-400 hover:text-white text-xs font-bold transition-all flex items-center justify-center gap-1.5"
+                            >
+                              <Play className="w-3.5 h-3.5 fill-current" />
+                              <span>Play Ep {ep.episode_number}</span>
+                            </button>
+                          </div>
 
                         </div>
                       ))}

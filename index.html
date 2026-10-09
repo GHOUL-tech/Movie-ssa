@@ -12,6 +12,19 @@
     <link rel="icon" type="image/png" href="/icon-192.png" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <title>Zinovis</title>
+    <script>
+      // Suppress Vite dev server HMR websocket notifications in cloud container
+      (function() {
+        var origConsoleError = console.error;
+        console.error = function() {
+          var firstArg = arguments[0];
+          if (typeof firstArg === 'string' && firstArg.indexOf('[vite]') !== -1 && firstArg.indexOf('WebSocket closed') !== -1) {
+            return;
+          }
+          return origConsoleError.apply(console, arguments);
+        };
+      })();
+    </script>
     <meta name="description" content="High-definition movie and TV show streaming service with real-time catalog, multi-server HD playback, and custom watchlists." />
     <meta property="og:title" content="Zinovis" />
     <meta property="og:description" content="High-definition movie and TV show streaming service with real-time catalog, multi-server HD playback, and custom watchlists." />
