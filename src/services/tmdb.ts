@@ -19,19 +19,40 @@ export function getImageUrl(path: string | null, size: 'poster' | 'backdrop' | '
   return `https://image.tmdb.org/t/p/${sizeMap[size]}${path}`;
 }
 
+const TMDB_READ_TOKEN = (import.meta as any).env?.VITE_TMDB_READ_TOKEN || "eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiI1MWIzNzE3MWFkZWY4MGZlYTEyNDI4MGE5MjE5NWJjMCIsIm5iZiI6MTc4NTIyODY2NS41NTUsInN1YiI6IjZhNjg2ZDc5NWZhMjNiOTA2MDRmNjdhNiIsInNjb3BlcyI6WyJhcGlfcmVhZCJdLCJ2ZXJzaW9uIjoxfQ.Zszu95k02KQoyOzTfSvXtr7F5h2rpR1iYRo7jdm2nBc";
+const TMDB_BASE_URL = "https://api.themoviedb.org/3";
+
 async function fetchFromApi(endpoint: string, params: Record<string, string> = {}) {
   const queryString = new URLSearchParams(params).toString();
   const proxyUrl = `/api/tmdb/${endpoint}${queryString ? `?${queryString}` : ''}`;
 
-  const res = await fetch(proxyUrl);
-  if (!res.ok) {
-    throw new Error(`TMDB proxy error ${res.status}`);
+  // 1. First attempt via the unified backend proxy (/api/tmdb)
+  try {
+    const res = await fetch(proxyUrl);
+    if (res.ok) {
+      const contentType = res.headers.get('content-type') || '';
+      if (contentType.includes('application/json')) {
+        return await res.json();
+      }
+    }
+  } catch (proxyErr) {
+    console.warn(`[TMDB] Proxy attempt failed for ${endpoint}, switching to direct TMDB API:`, proxyErr);
   }
-  const contentType = res.headers.get('content-type') || '';
-  if (contentType.includes('application/json')) {
-    return await res.json();
+
+  // 2. Resilient direct fallback for Vercel serverless cold-starts or static hosting
+  const directUrl = `${TMDB_BASE_URL}/${endpoint}${queryString ? `?${queryString}` : ''}`;
+  const directRes = await fetch(directUrl, {
+    headers: {
+      'Authorization': `Bearer ${TMDB_READ_TOKEN}`,
+      'Accept': 'application/json'
+    }
+  });
+
+  if (!directRes.ok) {
+    throw new Error(`TMDB direct API error ${directRes.status}`);
   }
-  throw new Error('Invalid JSON response from TMDB proxy');
+
+  return await directRes.json();
 }
 
 export async function getTrending(mediaType: 'all' | 'movie' | 'tv' = 'all', timeWindow: 'day' | 'week' = 'week'): Promise<MediaItem[]> {

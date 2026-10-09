@@ -1,6 +1,9 @@
 import type { Request, Response } from 'express';
+import { createRequire } from 'module';
 import cheerio from 'cheerio-without-node-native';
 import crypto from 'crypto-js';
+
+const require = typeof globalThis.require === 'function' ? globalThis.require : createRequire(import.meta.url);
 
 export interface RepositoryConfig {
   id: string;
